@@ -28,6 +28,7 @@ from ...state_fns.circuit_state_fn import CircuitStateFn
 from ...primitive_ops.circuit_op import CircuitOp
 from ...list_ops.summed_op import SummedOp
 from ...list_ops.list_op import ListOp
+from ...list_ops.sparse_vector_op import SparseVectorOp
 from ...list_ops.composed_op import ComposedOp
 from ...state_fns.dict_state_fn import DictStateFn
 from ...state_fns.vector_state_fn import VectorStateFn
@@ -220,7 +221,7 @@ class ParamShift(CircuitGradient):
                 # If the operator represents a quantum state then we apply a special combo
                 # function to evaluate probability gradients.
                 elif isinstance(operator, StateFn):
-                    shifted_op = ListOp(
+                    shifted_op = SparseVectorOp(
                         [pshift_op, mshift_op],
                         combo_fn=partial(self._prob_combo_fn, shift_constant=shift_constant))
                 else:
