@@ -29,10 +29,10 @@ class TestOptimizers(QiskitAlgorithmsTestCase):
         super().setUp()
         algorithm_globals.random_seed = 52
 
-    def _optimize(self, optimizer):
+    def _optimize(self, optimizer, decimal=2):
         x_0 = [1.3, 0.7, 0.8, 1.9, 1.2]
         res = optimizer.optimize(len(x_0), rosen, initial_point=x_0)
-        np.testing.assert_array_almost_equal(res[0], [1.0] * len(x_0), decimal=2)
+        np.testing.assert_array_almost_equal(res[0], [1.0] * len(x_0), decimal=decimal)
         return res
 
     def test_adam(self):
@@ -83,11 +83,11 @@ class TestOptimizers(QiskitAlgorithmsTestCase):
         res = self._optimize(optimizer)
         self.assertLessEqual(res[2], 10000)
 
-    @unittest.skip("Skipping SPSA as it does not do well on non-convex rozen")
     def test_spsa(self):
         """ spsa test """
-        optimizer = SPSA(maxiter=10000)
-        res = self._optimize(optimizer)
+        np.random.seed(4)
+        optimizer = SPSA(maxiter=10000, learning_rate=1e-4, perturbation=1e-4, blocking=True)
+        res = self._optimize(optimizer, decimal=1)
         self.assertLessEqual(res[2], 100000)
 
     def test_tnc(self):

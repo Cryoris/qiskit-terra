@@ -107,7 +107,7 @@ from .nelder_mead import NELDER_MEAD
 from .p_bfgs import P_BFGS
 from .powell import POWELL
 from .slsqp import SLSQP
-from .spsa import SPSA
+from ._spsa import SPSA
 from .tnc import TNC
 from .aqgd import AQGD
 from .nft import NFT
@@ -135,5 +135,11 @@ __all__ = ['Optimizer',
            'SLSQP',
            'SPSA',
            'TNC',
-           'CRS', 'DIRECT_L', 'DIRECT_L_RAND', 'ESCH', 'ISRES',
-           'SNOBFIT', 'BOBYQA', 'IMFIL']
+           'CRS',
+           'DIRECT_L',
+           'DIRECT_L_RAND',
+           'ESCH',
+           'ISRES',
+           'SNOBFIT',
+           'BOBYQA',
+           'IMFIL']
