@@ -137,7 +137,7 @@ class TestVQE(QiskitAlgorithmsTestCase):
 
     def test_basic_aer_qasm(self):
         """Test the VQE on BasicAer's QASM simulator."""
-        optimizer = SPSA(maxiter=300)
+        optimizer = SPSA(maxiter=300, last_avg=5)
         wavefunction = self.ry_wavefunction
 
         vqe = VQE(var_form=wavefunction,
@@ -195,7 +195,7 @@ class TestVQE(QiskitAlgorithmsTestCase):
             self.skipTest("Aer doesn't appear to be installed. Error: '{}'".format(str(ex)))
             return
         backend = Aer.get_backend('qasm_simulator')
-        optimizer = SPSA(maxiter=200)
+        optimizer = SPSA(maxiter=200, last_avg=5)
         wavefunction = self.ry_wavefunction
 
         quantum_instance = QuantumInstance(backend,

@@ -5,6 +5,7 @@ import logging
 import warnings
 from time import time
 
+from collections import deque
 import scipy
 import numpy as np
 
@@ -24,45 +25,41 @@ logger = logging.getLogger(__name__)
 class SPSA(Optimizer):
     """A generalized SPSA optimizer including support for Hessians."""
 
-    def __init__(self, maxiter: int = 100,
-                 blocking: bool = False,  # save_steps: int = 1,
-                 trust_region: Union[bool, str] = False,  # last_avg: int = 1,
-                 # c0: float = _C0,
+    def __init__(self,
+                 maxiter: int = 100,
+                 blocking: bool = False,
+                 allowed_increase: Optional[float] = None,
+                 trust_region: bool = False,
                  learning_rate: Optional[Union[float, Callable[[], Iterator]]] = None,
-                 # c1: float = 0.1,
                  perturbation: Optional[Union[float, Callable[[], Iterator]]] = None,
-                 tolerance: float = 1e-7,  # c2: float = 0.602,
-                 callback: Optional[CALLBACK] = None,  # c3: float = 0.101,
+                 tolerance: float = 1e-7,
+                 last_avg: int = 1,
+                 callback: Optional[CALLBACK] = None,
                  # 2-SPSA arguments
-                 second_order: bool = False,  # c4: float = 0,
-                 hessian_delay: int = 0,  # skip_calibration: bool = False) -> None:
+                 second_order: bool = False,  # skip_calibration: bool = False) -> None:
+                 hessian_delay: int = 0,
                  hessian_resamplings: int = 1,
                  lse_solver: Optional[Union[str,
                                             Callable[[np.ndarray, np.ndarray], np.ndarray]]] = None,
                  regularization: Optional[float] = None,
                  perturbation_dims: Optional[int] = None,
                  initial_hessian: Optional[np.ndarray] = None,
-                 # TODO handle deprecated arguments?
-                 #  *,  # swallow accidential additional unnamed args to not set deprecated args
-                 #  save_steps: Optional[int] = None,
-                 #  last_avg: Optional[int] = None,
-                 #  c0: Optional[float] = None,
-                 #  c1: Optional[float] = None,
-                 #  c2: Optional[float] = None,
-                 #  c3: Optional[float] = None,
-                 #  c4: Optional[float] = None,
-                 #  skip_calibration: Optional[bool] = None
                  ) -> None:
         r"""
         Args:
             maxiter: The maximum number of iterations.
             blocking: If True, only accepts updates that improve the loss.
+            allowed_increase: If blocking is True, this sets by how much the loss can increase
+                and still be accepted. If None, calibrated automatically to be twice the
+                standard deviation of the loss function.
             trust_region: If True, restricts norm of the random direction to be <= 1.
             learning_rate: A generator yielding learning rates for the parameter updates,
                 :math:`a_k`.
             perturbation: A generator yielding the perturbation magnitudes :math:`c_k`.
             tolerance: If the norm of the parameter update is smaller than this threshold, the
                 optimizer is converged.
+            last_avg: Return the average of the ``last_avg`` parameters instead of just the
+                last parameter values.
             callback: A callback function passed information in each iteration step. The
                 information is, in this order: the parameters, the function value, the number
                 of function evaluations, the stepsize, whether the step was accepted.
@@ -84,6 +81,7 @@ class SPSA(Optimizer):
             initial_hessian: The initial guess for the Hessian. By default the identity matrix
                 is used.
         """
+        print('-- new spsa --')
         super().__init__()
 
         if regularization is None:
@@ -104,9 +102,11 @@ class SPSA(Optimizer):
 
         self.maxiter = maxiter
         self.blocking = blocking
+        self.allowed_increase = allowed_increase
         self.trust_region = trust_region
         self.callback = callback
-        self.second_order = second_order  # more logic included in the setter
+        self.last_avg = last_avg
+        self.second_order = second_order
         self.tolerance = tolerance
         self.hessian_delay = hessian_delay
         self.hessian_resamplings = hessian_resamplings
@@ -188,6 +188,14 @@ class SPSA(Optimizer):
             return powerseries(c, gamma)
 
         return learning_rate, perturbation
+
+    @staticmethod
+    def estimate_stddev(loss: Callable[[np.ndarray], float],
+                        initial_point: np.ndarray,
+                        avg: int = 25) -> float:
+        """Estimate the standard deviation of the loss function."""
+        losses = [loss(initial_point) for _ in range(avg)]
+        return np.std(losses)
 
     def _compute_gradient(self, loss, x, eps, delta):
         # compute the gradient approximation and additionally return the loss function evaluations
@@ -287,10 +295,15 @@ class SPSA(Optimizer):
         if self.blocking:
             fx = loss(x)
             self._nfev += 1
+            if self.allowed_increase is None:
+                self.allowed_increase = 2 * self.estimate_stddev(loss, x)
 
         logger.info('=' * 30)
         logger.info('Starting SPSA optimization')
         start = time()
+
+        # keep track of the last few steps to return their average
+        last_steps = deque([x])
 
         for k in range(1, self.maxiter + 1):
             iteration_start = time()
@@ -316,7 +329,7 @@ class SPSA(Optimizer):
             if self.blocking:
                 fx_next = loss(x_next)
                 self._nfev += 1
-                if fx <= fx_next:  # discard update if it didn't improve the loss
+                if fx + self.allowed_increase <= fx_next:  # accept only if loss improved
                     if self.callback is not None:
                         callback_args += [self._nfev,  # number of function evals
                                           False]  # not accepted
@@ -338,12 +351,21 @@ class SPSA(Optimizer):
             # update parameters
             x = x_next
 
+            # update the list of the last ``last_avg`` parameters
+            if self.last_avg > 1:
+                last_steps.append(x_next)
+                if len(last_steps) > self.last_avg:
+                    last_steps.popleft()
+
             # check termination
             if np.linalg.norm(update) < self.tolerance:
                 break
 
         logger.info('SPSA finished in %s', time() - start)
         logger.info('=' * 30)
+
+        if self.last_avg > 1:
+            x = np.mean(last_steps, axis=0)
 
         return x, loss(x), self._nfev
 

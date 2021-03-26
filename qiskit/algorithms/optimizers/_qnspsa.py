@@ -22,6 +22,7 @@ class QNSPSA(SPSA):
                  overlap_fn: OVERLAP,
                  maxiter: int = 100,
                  blocking: bool = False,
+                 allowed_increase: Optional[float] = None,
                  learning_rate: Optional[Union[float, Callable[[], Iterator]]] = None,
                  perturbation: Optional[Union[float, Callable[[], Iterator]]] = None,
                  tolerance: float = 1e-7,
@@ -39,6 +40,9 @@ class QNSPSA(SPSA):
         Args:
             maxiter: The maximum number of iterations.
             blocking: If True, only accepts updates that improve the loss.
+            allowed_increase: If blocking is True, this sets by how much the loss can increase
+                and still be accepted. If None, calibrated automatically to be twice the
+                standard deviation of the loss function.
             learning_rate: A generator yielding learning rates for the parameter updates,
                 :math:`a_k`.
             perturbation: A generator yielding the perturbation magnitudes :math:`c_k`.
@@ -67,6 +71,7 @@ class QNSPSA(SPSA):
         """
         super().__init__(maxiter,
                          blocking,
+                         allowed_increase,
                          trust_region=False,
                          learning_rate=learning_rate,
                          perturbation=perturbation,
