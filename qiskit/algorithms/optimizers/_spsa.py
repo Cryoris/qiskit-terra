@@ -9,7 +9,11 @@ from collections import deque
 import scipy
 import numpy as np
 
+from qiskit.circuit import ParameterVector
 from qiskit.algorithms.optimizers import Optimizer, OptimizerSupportLevel
+from qiskit.opflow import ListOp, CircuitSampler
+from qiskit.providers import BackendV1 as Backend
+from qiskit.utils import QuantumInstance
 
 # a preconditioner can either be a function (e.g. loss function to obtain the Hessian)
 # or a metric (e.g. Fubini-Study metric to obtain the quantum Fisher information)
@@ -44,6 +48,7 @@ class SPSA(Optimizer):
                  regularization: Optional[float] = None,
                  perturbation_dims: Optional[int] = None,
                  initial_hessian: Optional[np.ndarray] = None,
+                 backend: Optional[Union[Backend, QuantumInstance]] = None,
                  ) -> None:
         r"""
         Args:
@@ -80,6 +85,8 @@ class SPSA(Optimizer):
                 dimensions are perturbed simulatneously.
             initial_hessian: The initial guess for the Hessian. By default the identity matrix
                 is used.
+            backend: A backend to evaluate the circuits, if the overlap function is provided as
+                a circuit and the objective function as operator expression.
         """
         print('-- new spsa --')
         super().__init__()
@@ -117,6 +124,13 @@ class SPSA(Optimizer):
         self.trust_region = trust_region
 
         # runtime arguments
+        self.grad_params = None
+        self.grad_expr = None
+        self.hessian_params = None
+        self.hessian_expr = None
+        self.gradient_expressions = None
+
+        self._sampler = CircuitSampler(backend, caching='all')
         self._nfev = None
         self._moving_avg = None  # moving average of the preconditioner
 
@@ -197,15 +211,15 @@ class SPSA(Optimizer):
         losses = [loss(initial_point) for _ in range(avg)]
         return np.std(losses)
 
-    def _point_estimate(self, loss, x, eps, delta1, delta2):
+    def _point_sample_blackbox(self, loss, x, eps, delta1, delta2):
         pert1, pert2 = eps * delta1, eps * delta2
 
         # compute the gradient approximation and additionally return the loss function evaluations
         plus, minus = loss(x + eps * delta1), loss(x - eps * delta1)
-        gradient_estimate = (plus - minus) / (2 * eps) * delta1
+        gradient_sample = (plus - minus) / (2 * eps) * delta1
         self._nfev += 2
 
-        hessian_estimate = None
+        hessian_sample = None
         if self.second_order:
             # compute the preconditioner point estimate
             diff = loss(x + pert1 + pert2) - plus
@@ -215,9 +229,106 @@ class SPSA(Optimizer):
             self._nfev += 2
 
             rank_one = np.outer(delta1, delta2)
-            hessian_estimate = diff * (rank_one + rank_one.T) / 2
+            hessian_sample = diff * (rank_one + rank_one.T) / 2
 
-        return gradient_estimate, hessian_estimate
+        return gradient_sample, hessian_sample
+
+    def _point_samples_blackbox(self, loss, x, eps, deltas1, deltas2):
+        # number of samples
+        resamplings = len(deltas1)
+
+        # set up variables to store averages
+        gradient_estimate, hessian_estimate = np.zeros(x.size), np.zeros((x.size, x.size))
+
+        # iterate over the directions
+        for delta1, delta2 in zip(deltas1, deltas2):
+            gradient_sample, hessian_sample = self._point_sample_blackbox(loss, x, eps, delta1,
+                                                                          delta2)
+            gradient_estimate += gradient_sample
+
+            if self.second_order:
+                hessian_estimate += hessian_sample
+
+        return gradient_estimate / resamplings, hessian_estimate / resamplings
+
+    def _point_samples_circuits(self, loss, x, eps, deltas1, deltas2):
+        # cache gradient epxressions
+        if self.gradient_expressions is None:
+            # sorted loss parameters
+            sorted_params = sorted(loss.parameters, key=lambda p: p.name)
+
+            # SPSA estimates
+            theta_p = ParameterVector('th+', len(loss.parameters))
+            theta_m = ParameterVector('th-', len(loss.parameters))
+
+            # 2-SPSA estimates
+            x_pp = ParameterVector('x++', len(loss.parameters))
+            x_pm = ParameterVector('x+-', len(loss.parameters))
+            x_mp = ParameterVector('x-+', len(loss.parameters))
+            x_mm = ParameterVector('x--', len(loss.parameters))
+
+            self.grad_expr = [
+                loss.assign_parameters(dict(zip(sorted_params, theta_p))),
+                loss.assign_parameters(dict(zip(sorted_params, theta_m)))
+            ]
+            self.grad_params = [theta_p, theta_m]
+
+            # catch QNSPSA case. Could be put in a method to make it a bit nicer
+            if self.hessian_expr is None:
+                self.hessian_expr = [
+                    loss.assign_parameters(dict(zip(sorted_params, x_pp))),
+                    loss.assign_parameters(dict(zip(sorted_params, x_pm))),
+                    loss.assign_parameters(dict(zip(sorted_params, x_mp))),
+                    loss.assign_parameters(dict(zip(sorted_params, x_mm))),
+                ]
+                self.hessian_params = [x_pp, x_pm, x_mp, x_mm]
+
+            self.gradient_expressions = ListOp(self.grad_expr + self.hessian_expr)
+
+        num_parameters = x.size
+        resamplings = len(deltas1)
+
+        # SPSA parameters
+        theta_p_ = np.array([x + eps * delta1 for delta1 in deltas1])
+        theta_m_ = np.array([x - eps * delta1 for delta1 in deltas1])
+
+        # 2-SPSA parameters
+        x_pp_ = np.array([x + eps * (delta1 + delta2) for delta1, delta2 in zip(deltas1, deltas2)])
+        x_pm_ = np.array([x + eps * delta1 for delta1 in deltas1])
+        x_mp_ = np.array([x - eps * (delta1 - delta2) for delta1, delta2 in zip(deltas1, deltas2)])
+        x_mm_ = np.array([x - eps * delta1 for delta1 in deltas1])
+        y_ = np.array([x for _ in deltas1])
+
+        # build dictionary
+        values_dict = {}
+
+        for params, value_matrix in zip(
+            self.grad_params + self.hessian_params,
+            [theta_p_, theta_m_, x_pp_, x_pm_, x_mp_, x_mm_, y_],
+        ):
+            values_dict.update({
+                params[i]: value_matrix[:, i].tolist() for i in range(num_parameters)
+            })
+
+        # execute at once
+        results = np.array(self._sampler.convert(self.gradient_expressions,
+                                                 params=values_dict).eval()).real
+
+        # put results together
+        gradient_estimate = np.zeros(x.size)
+        for i in range(resamplings):
+            gradient_estimate += (results[i, 0] - results[i, 1]) / (2 * eps) * deltas1[0]
+
+        hessian_estimate = np.zeros((x.size, x.size))
+        for i in range(resamplings):
+            diff = results[i, 2] - results[i, 3]
+            diff -= results[i, 4] - results[i, 5]
+            diff /= 2 * eps ** 2
+
+            rank_one = np.outer(deltas1[i], deltas2[i])
+            hessian_estimate += diff * (rank_one + rank_one.T) / 2
+
+        return gradient_estimate / resamplings, hessian_estimate / resamplings
 
     def _compute_update(self, loss, x, k, eps):
         # compute the perturbations
@@ -230,20 +341,13 @@ class SPSA(Optimizer):
         preconditioner = np.zeros((x.size, x.size))
 
         # accumulate the number of samples
-        for _ in range(avg):
-            delta1 = bernoulli_perturbation(x.size, self.perturbation_dims)
-            delta2 = bernoulli_perturbation(x.size, self.perturbation_dims)
+        deltas1 = [bernoulli_perturbation(x.size, self.perturbation_dims) for _ in range(avg)]
+        deltas2 = [bernoulli_perturbation(x.size, self.perturbation_dims) for _ in range(avg)]
 
-            # compute the gradient
-            gradient_sample, hessian_sample = self._point_estimate(loss, x, eps, delta1, delta2)
-            gradient += gradient_sample
-
-            # compute the preconditioner
-            if self.second_order:
-                preconditioner += hessian_sample
-
-        # take the mean
-        gradient /= avg
+        if callable(loss):
+            gradient, preconditioner = self._point_samples_blackbox(loss, x, eps, deltas1, deltas2)
+        else:
+            gradient, preconditioner = self._point_samples_circuits(loss, x, eps, deltas1, deltas2)
 
         # update the exponentially smoothed average
         if self.second_order:
@@ -261,10 +365,22 @@ class SPSA(Optimizer):
         return gradient
 
     def _minimize(self, loss, initial_point):
+        # handle circuits case
+        if not callable(loss):
+            # sorted loss parameters
+            sorted_params = sorted(loss.parameters, key=lambda p: p.name)
+
+            def loss_callable(x):
+                value_dict = dict(zip(sorted_params, x))
+                return self._sampler.convert(loss, params=value_dict).eval().real
+
+        else:
+            loss_callable = loss
+
         # ensure learning rate and perturbation are set
         # this happens only here because for the calibration the loss function is required
         if self.learning_rate is None and self.perturbation is None:
-            get_learning_rate, get_perturbation = self.calibrate(loss, initial_point)
+            get_learning_rate, get_perturbation = self.calibrate(loss_callable, initial_point)
             self.learning_rate = get_learning_rate
             self.perturbation = get_perturbation
 
@@ -287,7 +403,8 @@ class SPSA(Optimizer):
 
         # if blocking is enabled we need to keep track of the function values
         if self.blocking:
-            fx = loss(x)
+            fx = loss_callable(x)
+
             self._nfev += 1
             if self.allowed_increase is None:
                 self.allowed_increase = 2 * self.estimate_stddev(loss, x)
@@ -314,20 +431,18 @@ class SPSA(Optimizer):
             update = update * next(eta)
             x_next = x - update
 
-            if self.callback is not None:
-                callback_args = [x_next,  # next parameters
-                                 loss(x_next),  # loss at next parameters
-                                 np.linalg.norm(update)]  # size of the update step
-
             # blocking
             if self.blocking:
-                fx_next = loss(x_next)
+                fx_next = loss_callable(x_next)
+
                 self._nfev += 1
                 if fx + self.allowed_increase <= fx_next:  # accept only if loss improved
                     if self.callback is not None:
-                        callback_args += [self._nfev,  # number of function evals
-                                          False]  # not accepted
-                        self.callback(*callback_args)
+                        self.callback(self._nfev,  # number of function evals
+                                      x_next,  # next parameters
+                                      fx_next,  # loss at next parameters
+                                      np.linalg.norm(update),  # size of the update step
+                                      False)  # not accepted
 
                     logger.info('Iteration %s/%s rejected in %s.',
                                 k, self.maxiter + 1, time() - iteration_start)
@@ -338,9 +453,11 @@ class SPSA(Optimizer):
                         k, self.maxiter + 1, time() - iteration_start)
 
             if self.callback is not None:
-                callback_args += [self._nfev,  # number of function evals
-                                  True]  # accepted
-                self.callback(*callback_args)
+                self.callback(self._nfev,  # number of function evals
+                              x_next,  # next parameters
+                              fx_next,  # loss at next parameters
+                              np.linalg.norm(update),  # size of the update step
+                              True)  # accepted
 
             # update parameters
             x = x_next
@@ -361,7 +478,7 @@ class SPSA(Optimizer):
         if self.last_avg > 1:
             x = np.mean(last_steps, axis=0)
 
-        return x, loss(x), self._nfev
+        return x, loss_callable(x), self._nfev
 
     def get_support_level(self):
         """Get the support level dictionary."""

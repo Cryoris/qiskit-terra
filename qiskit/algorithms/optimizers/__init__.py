@@ -108,6 +108,7 @@ from .p_bfgs import P_BFGS
 from .powell import POWELL
 from .slsqp import SLSQP
 from ._spsa import SPSA
+from ._qnspsa import QNSPSA
 from .tnc import TNC
 from .aqgd import AQGD
 from .nft import NFT

@@ -3,8 +3,10 @@
 from typing import Iterator, Optional, Union, Callable
 
 import numpy as np
-from qiskit.circuit import ParameterVector
-from qiskit.opflow import StateFn, CircuitSampler
+from qiskit.circuit import ParameterVector, QuantumCircuit
+from qiskit.opflow import StateFn, CircuitSampler, ListOp
+from qiskit.providers import BackendV1 as Backend
+from qiskit.utils import QuantumInstance
 
 from ._spsa import SPSA
 
@@ -19,7 +21,7 @@ class QNSPSA(SPSA):
     """Quantum Natural SPSA."""
 
     def __init__(self,
-                 overlap_fn: OVERLAP,
+                 overlap_fn: Union[OVERLAP, QuantumCircuit],
                  maxiter: int = 100,
                  blocking: bool = False,
                  allowed_increase: Optional[float] = None,
@@ -35,6 +37,7 @@ class QNSPSA(SPSA):
                  regularization: Optional[float] = None,
                  perturbation_dims: Optional[int] = None,
                  initial_hessian: Optional[np.ndarray] = None,
+                 backend: Optional[Union[Backend, QuantumInstance]] = None,
                  ) -> None:
         r"""
         Args:
@@ -68,6 +71,8 @@ class QNSPSA(SPSA):
                 dimensions are perturbed simulatneously.
             initial_hessian: The initial guess for the Hessian. By default the identity matrix
                 is used.
+            backend: A backend to evaluate the circuits, if the overlap function is provided as
+                a circuit and the objective function as operator expression.
         """
         super().__init__(maxiter,
                          blocking,
@@ -83,12 +88,33 @@ class QNSPSA(SPSA):
                          lse_solver=lse_solver,
                          regularization=regularization,
                          perturbation_dims=perturbation_dims,
-                         initial_hessian=initial_hessian)
+                         initial_hessian=initial_hessian,
+                         backend=backend)
 
         self.overlap_fn = overlap_fn
 
+        if not callable(overlap_fn):
+            sorted_overlap_params = sorted(overlap_fn.parameters, key=lambda p: p.name)
+
+            x_pp = ParameterVector('x++', overlap_fn.num_parameters)
+            x_pm = ParameterVector('x+-', overlap_fn.num_parameters)
+            x_mp = ParameterVector('x-+', overlap_fn.num_parameters)
+            x_mm = ParameterVector('x--', overlap_fn.num_parameters)
+            y = ParameterVector('y', overlap_fn.num_parameters)
+
+            left = overlap_fn.assign_parameters(dict(zip(sorted_overlap_params, y)))
+            rights = [
+                overlap_fn.assign_parameters(dict(zip(sorted_overlap_params, x_pp))),
+                overlap_fn.assign_parameters(dict(zip(sorted_overlap_params, x_pm))),
+                overlap_fn.assign_parameters(dict(zip(sorted_overlap_params, x_mp))),
+                overlap_fn.assign_parameters(dict(zip(sorted_overlap_params, x_mm))),
+            ]
+
+            self.hessian_params = [x_pp, x_pm, x_mp, x_mm, y]
+            self.hessian_expr = [~StateFn(left) @ StateFn(right) for right in rights]
+
     # pylint: disable=unused-argument
-    def _point_estimate(self, loss, x, eps, delta1, delta2):
+    def _point_sample_blackbox(self, loss, x, eps, delta1, delta2):
         pert1, pert2 = eps * delta1, eps * delta2
 
         # compute the gradient approximation and additionally return the loss function evaluations
