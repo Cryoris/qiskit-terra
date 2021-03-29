@@ -197,32 +197,27 @@ class SPSA(Optimizer):
         losses = [loss(initial_point) for _ in range(avg)]
         return np.std(losses)
 
-    def _compute_gradient(self, loss, x, eps, delta):
-        # compute the gradient approximation and additionally return the loss function evaluations
-        plus, minus = loss(x + eps * delta), loss(x - eps * delta)
-        self._nfev += 2
-        return (plus - minus) / (2 * eps) * delta, plus, minus
-
-    def _point_estimate(self, loss, x, eps, delta1, delta2, plus, minus):
+    def _point_estimate(self, loss, x, eps, delta1, delta2):
         pert1, pert2 = eps * delta1, eps * delta2
 
-        # if the loss is the preconditioner we can save two evaluations
-        # else:
-        #     plus = self._eval_preconditioner(x, pert1)
-        #     minus = self._eval_preconditioner(x, -pert1)
-        #     self._nfev += 4
-
-        # compute the preconditioner point estimate
-        diff = loss(x + pert1 + pert2) - plus
-        diff -= loss(x - pert1 + pert2) - minus
-        diff /= 2 * eps ** 2
-
+        # compute the gradient approximation and additionally return the loss function evaluations
+        plus, minus = loss(x + eps * delta1), loss(x - eps * delta1)
+        gradient_estimate = (plus - minus) / (2 * eps) * delta1
         self._nfev += 2
 
-        rank_one = np.outer(delta1, delta2)
-        estimate = diff * (rank_one + rank_one.T) / 2
+        hessian_estimate = None
+        if self.second_order:
+            # compute the preconditioner point estimate
+            diff = loss(x + pert1 + pert2) - plus
+            diff -= loss(x - pert1 + pert2) - minus
+            diff /= 2 * eps ** 2
 
-        return estimate
+            self._nfev += 2
+
+            rank_one = np.outer(delta1, delta2)
+            hessian_estimate = diff * (rank_one + rank_one.T) / 2
+
+        return gradient_estimate, hessian_estimate
 
     def _compute_update(self, loss, x, k, eps):
         # compute the perturbations
@@ -237,16 +232,15 @@ class SPSA(Optimizer):
         # accumulate the number of samples
         for _ in range(avg):
             delta1 = bernoulli_perturbation(x.size, self.perturbation_dims)
+            delta2 = bernoulli_perturbation(x.size, self.perturbation_dims)
 
             # compute the gradient
-            gradient_sample, plus, minus = self._compute_gradient(loss, x, eps, delta1)
+            gradient_sample, hessian_sample = self._point_estimate(loss, x, eps, delta1, delta2)
             gradient += gradient_sample
 
             # compute the preconditioner
             if self.second_order:
-                delta2 = bernoulli_perturbation(x.size, self.perturbation_dims)
-                point_sample = self._point_estimate(loss, x, eps, delta1, delta2, plus, minus)
-                preconditioner += point_sample
+                preconditioner += hessian_sample
 
         # take the mean
         gradient /= avg

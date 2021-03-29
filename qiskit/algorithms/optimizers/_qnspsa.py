@@ -88,9 +88,15 @@ class QNSPSA(SPSA):
         self.overlap_fn = overlap_fn
 
     # pylint: disable=unused-argument
-    def _point_estimate(self, loss, x, eps, delta1, delta2, plus, minus):
+    def _point_estimate(self, loss, x, eps, delta1, delta2):
         pert1, pert2 = eps * delta1, eps * delta2
 
+        # compute the gradient approximation and additionally return the loss function evaluations
+        plus, minus = loss(x + eps * delta1), loss(x - eps * delta1)
+        gradient_estimate = (plus - minus) / (2 * eps) * delta1
+        self._nfev += 2
+
+        # compute the preconditioner point estimate
         plus = self.overlap_fn(x, x + pert1)
         minus = self.overlap_fn(x, x - pert1)
 
@@ -99,12 +105,10 @@ class QNSPSA(SPSA):
         diff -= self.overlap_fn(x, x - pert1 + pert2) - minus
         diff /= 2 * eps ** 2
 
-        self._nfev += 4
-
         rank_one = np.outer(delta1, delta2)
-        estimate = diff * (rank_one + rank_one.T) / 2
+        hessian_estimate = diff * (rank_one + rank_one.T) / 2
 
-        return estimate
+        return gradient_estimate, hessian_estimate
 
     @staticmethod
     def get_overlap(circuit, backend=None, expectation=None):
