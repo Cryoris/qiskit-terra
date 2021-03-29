@@ -351,7 +351,6 @@ class SPSA(Optimizer):
 
         # update the exponentially smoothed average
         if self.second_order:
-            preconditioner /= avg
             smoothed = k / (k + 1) * self._moving_avg + 1 / (k + 1) * preconditioner
             self._moving_avg = smoothed
 
