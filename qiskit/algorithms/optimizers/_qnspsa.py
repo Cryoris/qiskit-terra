@@ -4,7 +4,7 @@ from typing import Iterator, Optional, Union, Callable
 
 import numpy as np
 from qiskit.circuit import ParameterVector, QuantumCircuit
-from qiskit.opflow import StateFn, CircuitSampler, ListOp
+from qiskit.opflow import StateFn, CircuitSampler
 from qiskit.providers import BackendV1 as Backend
 from qiskit.utils import QuantumInstance
 
