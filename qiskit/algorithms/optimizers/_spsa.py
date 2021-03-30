@@ -130,7 +130,11 @@ class SPSA(Optimizer):
         self.hessian_expr = None
         self.gradient_expressions = None
 
-        self._sampler = CircuitSampler(backend, caching='all')
+        if backend is not None:
+            self._sampler = CircuitSampler(backend, caching='all')
+        else:
+            self._sampler = None
+
         self._nfev = None
         self._moving_avg = None  # moving average of the preconditioner
 
