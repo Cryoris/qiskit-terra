@@ -15,17 +15,15 @@
 See https://arxiv.org/abs/1304.3061
 """
 
-from typing import Optional, List, Callable, Union, Dict
+from typing import Optional, List, Callable, Union
 import logging
 import numpy as np
 
 from qiskit import QuantumCircuit
-from qiskit.circuit import Parameter
 from qiskit.circuit.library import RealAmplitudes
 from qiskit.providers import BaseBackend
 from qiskit.providers import Backend
-from qiskit.opflow import (OperatorBase, ExpectationBase, StateFn,
-                           CircuitStateFn, ListOp, I, CircuitSampler)
+from qiskit.opflow import OperatorBase, ExpectationBase, I, CircuitSampler
 from qiskit.utils.quantum_instance import QuantumInstance
 
 from qiskit.algorithms.optimizers import SPSA, QNSPSA
@@ -87,20 +85,24 @@ class QNSPSAVQE(VQE):
                  var_form: Optional[QuantumCircuit] = None,
                  initial_point: Optional[np.ndarray] = None,
                  expectation: Optional[ExpectationBase] = None,
-                 include_custom: bool = False,
                  callback: Optional[Callable[[int, np.ndarray, float, float], None]] = None,
                  quantum_instance: Optional[Union[QuantumInstance, BaseBackend, Backend]] = None,
                  natural_spsa: bool = False,
+                 maxiter: int = 100,
+                 blocking: bool = True,
+                 allowed_increase: float = 0.1,
+                 learning_rate: float = 0.01,
+                 perturbation: float = 0.01,
+                 regularization: float = 0.01,
+                 resamplings: int = 1,
                  ) -> None:
         """
 
         Args:
             var_form: A parameterized circuit used as Ansatz for the wave function.
-            optimizer: A classical optimizer.
             initial_point: An optional initial point (i.e. initial parameter values)
                 for the optimizer. If ``None`` then VQE will look to the variational form for a
                 preferred point and if not will simply compute a random one.
-            gradient: An optional gradient function or operator for optimizer.
             expectation: The Expectation converter for taking the average value of the
                 Observable over the var_form state function. When ``None`` (the default) an
                 :class:`~qiskit.opflow.expectations.ExpectationFactory` is used to select
@@ -111,15 +113,6 @@ class QNSPSAVQE(VQE):
                 simulator. If you are just looking for the quickest performance when choosing Aer
                 qasm_simulator and the lack of shot noise is not an issue then set `include_custom`
                 parameter here to ``True`` (defaults to ``False``).
-            include_custom: When `expectation` parameter here is None setting this to ``True`` will
-                allow the factory to include the custom Aer pauli expectation.
-            max_evals_grouped: Max number of evaluations performed simultaneously. Signals the
-                given optimizer that more than one set of parameters can be supplied so that
-                potentially the expectation values can be computed in parallel. Typically this is
-                possible when a finite difference gradient is used by the optimizer such that
-                multiple points to compute the gradient can be passed and if computed in parallel
-                improve overall execution time. Deprecated if a gradient operator or function is
-                given.
             callback: a callback that can access the intermediate data during the optimization.
                 Four parameter values are passed to the callback as follows during each evaluation
                 by the optimizer for its current set of parameters as it works towards the minimum.
@@ -137,7 +130,6 @@ class QNSPSAVQE(VQE):
         self._circuit_sampler = None  # type: Optional[CircuitSampler]
         self._expectation = expectation
         self._user_valid_expectation = self._expectation is not None
-        self._include_custom = include_custom
         self._expect_op = None
 
         super().__init__(var_form=var_form,
@@ -145,6 +137,13 @@ class QNSPSAVQE(VQE):
                          quantum_instance=quantum_instance)
 
         self.natural_spsa = natural_spsa
+        self.maxiter = maxiter
+        self.learning_rate = learning_rate
+        self.perturbation = perturbation
+        self.allowed_increase = allowed_increase
+        self.blocking = blocking
+        self.regularization = regularization
+        self.resamplings = resamplings
 
         self._ret = VQEResult()
         self._eval_time = None
@@ -162,79 +161,6 @@ class QNSPSAVQE(VQE):
     def optimizer(self, optimizer):
         raise NotImplementedError('The optimizer is a SPSA version with batched circuits and '
                                   'cannot be set.')
-
-    def construct_expectation(self,
-                              parameter: Union[List[float], List[Parameter], np.ndarray],
-                              operator: OperatorBase,
-                              ) -> OperatorBase:
-        r"""
-        Generate the ansatz circuit and expectation value measurement, and return their
-        runnable composition.
-
-        Args:
-            parameter: Parameters for the ansatz circuit.
-            operator: Qubit operator of the Observable
-
-        Returns:
-            The Operator equalling the measurement of the ansatz :class:`StateFn` by the
-            Observable's expectation :class:`StateFn`.
-
-        Raises:
-            AlgorithmError: If no operator has been provided.
-        """
-        if operator is None:
-            raise AlgorithmError("The operator was never provided.")
-
-        operator = self._check_operator(operator)
-
-        if isinstance(self.var_form, QuantumCircuit):
-            param_dict = dict(zip(self._var_form_params, parameter))  # type: Dict
-            wave_function = self.var_form.assign_parameters(param_dict)
-        else:
-            wave_function = self.var_form.construct_circuit(parameter)
-
-        # Expectation was never created , try to create one
-        if self._expectation is None:
-            self._try_set_expectation_value_from_factory(operator)
-
-        # If setting the expectation failed, raise an Error:
-        if self._expectation is None:
-            raise AlgorithmError('No expectation set and could not automatically set one, please '
-                                 'try explicitly setting an expectation or specify a backend so it '
-                                 'can be chosen automatically.')
-
-        observable_meas = self.expectation.convert(StateFn(operator, is_measurement=True))
-        ansatz_circuit_op = CircuitStateFn(wave_function)
-        return observable_meas.compose(ansatz_circuit_op).reduce()
-
-    def construct_circuit(self,
-                          parameter: Union[List[float], List[Parameter], np.ndarray],
-                          operator: OperatorBase,
-                          ) -> List[QuantumCircuit]:
-        """Return the circuits used to compute the expectation value.
-
-        Args:
-            parameter: Parameters for the ansatz circuit.
-            operator: Qubit operator of the Observable
-
-        Returns:
-            A list of the circuits used to compute the expectation value.
-        """
-        expect_op = self.construct_expectation(parameter, operator).to_circuit_op()
-
-        circuits = []
-
-        # recursively extract circuits
-        def extract_circuits(op):
-            if isinstance(op, CircuitStateFn):
-                circuits.append(op.primitive)
-            elif isinstance(op, ListOp):
-                for op_i in op.oplist:
-                    extract_circuits(op_i)
-
-        extract_circuits(expect_op)
-
-        return circuits
 
     def compute_minimum_eigenvalue(
             self,
@@ -272,12 +198,13 @@ class QNSPSAVQE(VQE):
             self._expect_op = self.construct_expectation(self._var_form_params, operator)
 
         # CODE BELOW
-        optimizer_settings = {'maxiter': 100,
-                              'blocking': True,
-                              'allowed_increase': 0.1,
-                              'learning_rate': 0.01,
-                              'perturbation': 0.01,
-                              'regularization': 0.01,
+        optimizer_settings = {'maxiter': self.maxiter,
+                              'blocking': self.blocking,
+                              'allowed_increase': self.allowed_increase,
+                              'learning_rate': self.learning_rate,
+                              'perturbation': self.perturbation,
+                              'regularization': self.regularization,
+                              'resamplings': self.resamplings,
                               'callback': self._callback,
                               'backend': self._quantum_instance}
 

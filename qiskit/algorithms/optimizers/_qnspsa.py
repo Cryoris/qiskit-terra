@@ -27,11 +27,10 @@ class QNSPSA(SPSA):
                  allowed_increase: Optional[float] = None,
                  learning_rate: Optional[Union[float, Callable[[], Iterator]]] = None,
                  perturbation: Optional[Union[float, Callable[[], Iterator]]] = None,
-                 tolerance: float = 1e-7,
+                 resamplings: int = 1,
                  callback: Optional[CALLBACK] = None,
                  # 2-SPSA arguments
                  hessian_delay: int = 0,
-                 hessian_resamplings: int = 1,
                  lse_solver: Optional[Union[str,
                                             Callable[[np.ndarray, np.ndarray], np.ndarray]]] = None,
                  regularization: Optional[float] = None,
@@ -49,8 +48,7 @@ class QNSPSA(SPSA):
             learning_rate: A generator yielding learning rates for the parameter updates,
                 :math:`a_k`.
             perturbation: A generator yielding the perturbation magnitudes :math:`c_k`.
-            tolerance: If the norm of the parameter update is smaller than this threshold, the
-                optimizer is converged.
+            resamplings: In each step, sample the gradient (and preconditioner) this many times.
             callback: A callback function passed information in each iteration step. The
                 information is, in this order: the parameters, the function value, the number
                 of function evaluations, the stepsize, whether the step was accepted.
@@ -60,8 +58,6 @@ class QNSPSA(SPSA):
             hessian_delay: Start preconditioning only after a certain number of iterations.
                 Can be useful to first get a stable average over the last iterations before using
                 the preconditioner.
-            hessian_resamplings: In each step, sample the preconditioner this many times. Default
-                is 1.
             lse_solver: The method to solve for the inverse of the preconditioner. Per default an
                 exact LSE solver is used, but can e.g. be overwritten by a minimization routine.
             regularization: To ensure the preconditioner is symmetric and positive definite, the
@@ -80,11 +76,10 @@ class QNSPSA(SPSA):
                          trust_region=False,
                          learning_rate=learning_rate,
                          perturbation=perturbation,
-                         tolerance=tolerance,
+                         resamplings=resamplings,
                          callback=callback,
                          second_order=True,
                          hessian_delay=hessian_delay,
-                         hessian_resamplings=hessian_resamplings,
                          lse_solver=lse_solver,
                          regularization=regularization,
                          perturbation_dims=perturbation_dims,

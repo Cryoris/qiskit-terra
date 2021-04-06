@@ -36,13 +36,12 @@ class SPSA(Optimizer):
                  trust_region: bool = False,
                  learning_rate: Optional[Union[float, Callable[[], Iterator]]] = None,
                  perturbation: Optional[Union[float, Callable[[], Iterator]]] = None,
-                 tolerance: float = 1e-7,
+                 resamplings: int = 1,
                  last_avg: int = 1,
                  callback: Optional[CALLBACK] = None,
                  # 2-SPSA arguments
                  second_order: bool = False,  # skip_calibration: bool = False) -> None:
                  hessian_delay: int = 0,
-                 hessian_resamplings: int = 1,
                  lse_solver: Optional[Union[str,
                                             Callable[[np.ndarray, np.ndarray], np.ndarray]]] = None,
                  regularization: Optional[float] = None,
@@ -88,7 +87,6 @@ class SPSA(Optimizer):
             backend: A backend to evaluate the circuits, if the overlap function is provided as
                 a circuit and the objective function as operator expression.
         """
-        print('-- new spsa --')
         super().__init__()
 
         if regularization is None:
@@ -112,11 +110,10 @@ class SPSA(Optimizer):
         self.allowed_increase = allowed_increase
         self.trust_region = trust_region
         self.callback = callback
+        self.resamplings = resamplings
         self.last_avg = last_avg
         self.second_order = second_order
-        self.tolerance = tolerance
         self.hessian_delay = hessian_delay
-        self.hessian_resamplings = hessian_resamplings
         self.lse_solver = lse_solver
         self.regularization = regularization
         self.perturbation_dims = perturbation_dims
@@ -336,10 +333,10 @@ class SPSA(Optimizer):
 
     def _compute_update(self, loss, x, k, eps):
         # compute the perturbations
-        if isinstance(self.hessian_resamplings, dict):
-            avg = self.hessian_resamplings.get(k, 1)
+        if isinstance(self.resamplings, dict):
+            avg = self.resamplings.get(k, 1)
         else:
-            avg = self.hessian_resamplings
+            avg = self.resamplings
 
         gradient = np.zeros(x.size)
         preconditioner = np.zeros((x.size, x.size))
@@ -470,10 +467,6 @@ class SPSA(Optimizer):
                 last_steps.append(x_next)
                 if len(last_steps) > self.last_avg:
                     last_steps.popleft()
-
-            # check termination
-            if np.linalg.norm(update) < self.tolerance:
-                break
 
         logger.info('SPSA finished in %s', time() - start)
         logger.info('=' * 30)
