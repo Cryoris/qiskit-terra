@@ -95,6 +95,7 @@ class QNSPSAVQE(VQE):
                  perturbation: float = 0.01,
                  regularization: float = 0.01,
                  resamplings: int = 1,
+                 hessian_delay: int = 0,
                  ) -> None:
         """
 
@@ -144,6 +145,7 @@ class QNSPSAVQE(VQE):
         self.blocking = blocking
         self.regularization = regularization
         self.resamplings = resamplings
+        self.hessian_delay = hessian_delay
 
         self._ret = VQEResult()
         self._eval_time = None
@@ -205,6 +207,7 @@ class QNSPSAVQE(VQE):
                               'perturbation': self.perturbation,
                               'regularization': self.regularization,
                               'resamplings': self.resamplings,
+                              'hessian_delay': self.hessian_delay,
                               'callback': self._callback,
                               'backend': self._quantum_instance}
 
