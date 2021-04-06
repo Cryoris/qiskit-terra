@@ -152,7 +152,7 @@ from .amplitude_estimators import (
 )
 from .eigen_solvers import NumPyEigensolver, Eigensolver, EigensolverResult
 from .factorizers import Shor, ShorResult
-from .minimum_eigen_solvers import (VQE, VQEResult, QAOA,
+from .minimum_eigen_solvers import (VQE, VQEResult, QNSPSAVQE, QAOA,
                                     NumPyMinimumEigensolver,
                                     MinimumEigensolver, MinimumEigensolverResult)
 from .phase_estimators import (HamiltonianPhaseEstimation, HamiltonianPhaseEstimationResult,
@@ -184,6 +184,7 @@ __all__ = [
     'ShorResult',
     'VQE',
     'VQEResult',
+    'QNSPSAVQE',
     'QAOA',
     'NumPyMinimumEigensolver',
     'MinimumEigensolver',
