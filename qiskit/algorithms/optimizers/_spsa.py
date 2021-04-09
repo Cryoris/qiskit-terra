@@ -218,6 +218,7 @@ class SPSA(Optimizer):
         # compute the gradient approximation and additionally return the loss function evaluations
         plus, minus = loss(x + eps * delta1), loss(x - eps * delta1)
         gradient_sample = (plus - minus) / (2 * eps) * delta1
+        fx_sample = (plus + minus) / 2
         self._nfev += 2
 
         hessian_sample = None
@@ -232,7 +233,7 @@ class SPSA(Optimizer):
             rank_one = np.outer(delta1, delta2)
             hessian_sample = diff * (rank_one + rank_one.T) / 2
 
-        return gradient_sample, hessian_sample
+        return gradient_sample, hessian_sample, fx_sample
 
     def _point_samples_blackbox(self, loss, x, eps, deltas1, deltas2):
         # number of samples
@@ -243,14 +244,17 @@ class SPSA(Optimizer):
 
         # iterate over the directions
         for delta1, delta2 in zip(deltas1, deltas2):
-            gradient_sample, hessian_sample = self._point_sample_blackbox(loss, x, eps, delta1,
-                                                                          delta2)
+            gradient_sample, hessian_sample, fx_sample = self._point_sample_blackbox(loss, x, eps,
+                                                                                     delta1, delta2)
             gradient_estimate += gradient_sample
+            fx_estimate += fx_sample
 
             if self.second_order:
                 hessian_estimate += hessian_sample
 
-        return gradient_estimate / resamplings, hessian_estimate / resamplings
+        return (gradient_estimate / resamplings,
+                hessian_estimate / resamplings,
+                fx_estimate / resamplings)
 
     def _point_samples_circuits(self, loss, x, eps, deltas1, deltas2):
         # cache gradient epxressions
@@ -317,8 +321,10 @@ class SPSA(Optimizer):
 
         # put results together
         gradient_estimate = np.zeros(x.size)
+        fx_estimate = 0
         for i in range(resamplings):
             gradient_estimate += (results[i, 0] - results[i, 1]) / (2 * eps) * deltas1[0]
+            fx_estimate += (results[i, 0] + results[i, 1]) / 2
 
         hessian_estimate = np.zeros((x.size, x.size))
         for i in range(resamplings):
@@ -329,7 +335,9 @@ class SPSA(Optimizer):
             rank_one = np.outer(deltas1[i], deltas2[i])
             hessian_estimate += diff * (rank_one + rank_one.T) / 2
 
-        return gradient_estimate / resamplings, hessian_estimate / resamplings
+        return (gradient_estimate / resamplings,
+                hessian_estimate / resamplings,
+                fx_estimate / resamplings)
 
     def _compute_update(self, loss, x, k, eps):
         # compute the perturbations
@@ -346,9 +354,11 @@ class SPSA(Optimizer):
         deltas2 = [bernoulli_perturbation(x.size, self.perturbation_dims) for _ in range(avg)]
 
         if callable(loss):
-            gradient, preconditioner = self._point_samples_blackbox(loss, x, eps, deltas1, deltas2)
+            gradient, preconditioner, fx = self._point_samples_blackbox(loss, x, eps, deltas1,
+                                                                        deltas2)
         else:
-            gradient, preconditioner = self._point_samples_circuits(loss, x, eps, deltas1, deltas2)
+            gradient, preconditioner, fx = self._point_samples_circuits(loss, x, eps, deltas1,
+                                                                        deltas2)
 
         # update the exponentially smoothed average
         if self.second_order:
@@ -362,7 +372,7 @@ class SPSA(Optimizer):
                 # solve for the gradient update
                 gradient = np.real(self.lse_solver(spd_preconditioner, gradient))
 
-        return gradient
+        return gradient, fx
 
     def _minimize(self, loss, initial_point):
         # handle circuits case
@@ -419,7 +429,7 @@ class SPSA(Optimizer):
         for k in range(1, self.maxiter + 1):
             iteration_start = time()
             # compute update
-            update = self._compute_update(loss, x, k, next(eps))
+            update, fx_next = self._compute_update(loss, x, k, next(eps))
 
             # trust region
             if self.trust_region:
