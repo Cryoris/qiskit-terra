@@ -108,6 +108,10 @@ class QNSPSA(SPSA):
             self.hessian_params = [x_pp, x_pm, x_mp, x_mm, y]
             self.hessian_expr = [~StateFn(left) @ StateFn(right) for right in rights]
 
+    @property
+    def name(self):
+        return 'QN-SPSA'
+
     # pylint: disable=unused-argument
     def _point_sample_blackbox(self, loss, x, eps, delta1, delta2):
         pert1, pert2 = eps * delta1, eps * delta2

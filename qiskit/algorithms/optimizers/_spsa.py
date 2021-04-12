@@ -92,20 +92,12 @@ class SPSA(Optimizer):
         if regularization is None:
             regularization = 0.01
 
-        if isinstance(learning_rate, float):
-            self.learning_rate = lambda: constant(learning_rate)
-        else:
-            self.learning_rate = learning_rate
-
-        if isinstance(perturbation, float):
-            self.perturbation = lambda: constant(perturbation)
-        else:
-            self.perturbation = perturbation
-
         if lse_solver is None:
             lse_solver = np.linalg.solve
 
         self.maxiter = maxiter
+        self.perturbation = perturbation
+        self.learning_rate = learning_rate
         self.blocking = blocking
         self.allowed_increase = allowed_increase
         self.trust_region = trust_region
@@ -212,6 +204,33 @@ class SPSA(Optimizer):
         losses = [loss(initial_point) for _ in range(avg)]
         return np.std(losses)
 
+    @property
+    def name(self):
+        return 'SPSA'
+
+    def to_dict(self):
+        for obj in [self.perturbation, self.learning_rate]:
+            if not (obj is None or isinstance(obj, float)):
+                raise AttributeError('Learning rate and perturbation must be None or float.')
+
+        if self.callback is not None:
+            raise AttributeError('Callback not serializable.')
+
+        return {'maxiter': self.maxiter,
+                'learning_rate': self.learning_rate,
+                'perturbation': self.perturbation,
+                'blocking': self.blocking,
+                'allowed_increase': self.allowed_increase,
+                'resamplings': self.resamplings,
+                # 'trust_region': self.trust_region,
+                # 'last_avg': self.last_avg,
+                # 'second_order': self.second_order,
+                'hessian_delay': self.hessian_delay,
+                'regularization': self.regularization,
+                # 'perturbation_dims': self.perturbation_dims,
+                # 'initial_hessian': self.initial_hessian
+                }
+
     def _point_sample_blackbox(self, loss, x, eps, delta1, delta2):
         pert1, pert2 = eps * delta1, eps * delta2
 
@@ -241,6 +260,7 @@ class SPSA(Optimizer):
 
         # set up variables to store averages
         gradient_estimate, hessian_estimate = np.zeros(x.size), np.zeros((x.size, x.size))
+        fx_estimate = 0
 
         # iterate over the directions
         for delta1, delta2 in zip(deltas1, deltas2):
@@ -391,15 +411,20 @@ class SPSA(Optimizer):
         # this happens only here because for the calibration the loss function is required
         if self.learning_rate is None and self.perturbation is None:
             get_learning_rate, get_perturbation = self.calibrate(loss_callable, initial_point)
-            self.learning_rate = get_learning_rate
-            self.perturbation = get_perturbation
-
-        if self.learning_rate is None or self.perturbation is None:
+            eta = get_learning_rate()
+            eps = get_perturbation()
+        elif self.learning_rate is None or self.perturbation is None:
             raise ValueError('If one of learning rate or perturbation is set, both must be set.')
+        else:
+            if isinstance(self.learning_rate, float):
+                eta = constant(self.learning_rate)
+            else:
+                eta = self.learning_rate()
 
-        # get iterator
-        eta = self.learning_rate()
-        eps = self.perturbation()
+            if isinstance(self.perturbation, float):
+                eps = constant(self.perturbation)
+            else:
+                eps = self.perturbation()
 
         # prepare some initials
         x = np.asarray(initial_point)

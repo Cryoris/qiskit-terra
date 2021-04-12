@@ -34,7 +34,7 @@ from ..exceptions import AlgorithmError
 
 logger = logging.getLogger(__name__)
 
-# disable check for var_forms, optimizer setter because of pylint bug
+# disable check for ansatzs, optimizer setter because of pylint bug
 # pylint: disable=no-member
 
 
@@ -73,7 +73,7 @@ class QNSPSAVQE(VQE):
 
     .. note::
 
-        The VQE stores the parameters of ``var_form`` sorted by name to map the values
+        The VQE stores the parameters of ``ansatz`` sorted by name to map the values
         provided by the optimizer to the circuit. This is done to ensure reproducible results,
         for example such that running the optimization twice with same random seeds yields the
         same result. Also, the ``optimal_point`` of the result object can be used as initial
@@ -82,7 +82,7 @@ class QNSPSAVQE(VQE):
     """
 
     def __init__(self,
-                 var_form: Optional[QuantumCircuit] = None,
+                 ansatz: Optional[QuantumCircuit] = None,
                  initial_point: Optional[np.ndarray] = None,
                  expectation: Optional[ExpectationBase] = None,
                  callback: Optional[Callable[[int, np.ndarray, float, float], None]] = None,
@@ -100,12 +100,12 @@ class QNSPSAVQE(VQE):
         """
 
         Args:
-            var_form: A parameterized circuit used as Ansatz for the wave function.
+            ansatz: A parameterized circuit used as Ansatz for the wave function.
             initial_point: An optional initial point (i.e. initial parameter values)
                 for the optimizer. If ``None`` then VQE will look to the variational form for a
                 preferred point and if not will simply compute a random one.
             expectation: The Expectation converter for taking the average value of the
-                Observable over the var_form state function. When ``None`` (the default) an
+                Observable over the ansatz state function. When ``None`` (the default) an
                 :class:`~qiskit.opflow.expectations.ExpectationFactory` is used to select
                 an appropriate expectation based on the operator and backend. When using Aer
                 qasm_simulator backend, with paulis, it is however much faster to leverage custom
@@ -121,19 +121,19 @@ class QNSPSAVQE(VQE):
                 variational form, the evaluated mean and the evaluated standard deviation.`
             quantum_instance: Quantum Instance or Backend
         """
-        if var_form is None:
-            var_form = RealAmplitudes()
+        if ansatz is None:
+            ansatz = RealAmplitudes()
 
         # set the initial point to the preferred parameters of the variational form
-        if initial_point is None and hasattr(var_form, 'preferred_init_points'):
-            initial_point = var_form.preferred_init_points
+        if initial_point is None and hasattr(ansatz, 'preferred_init_points'):
+            initial_point = ansatz.preferred_init_points
 
         self._circuit_sampler = None  # type: Optional[CircuitSampler]
         self._expectation = expectation
         self._user_valid_expectation = self._expectation is not None
         self._expect_op = None
 
-        super().__init__(var_form=var_form,
+        super().__init__(ansatz=ansatz,
                          initial_point=initial_point,
                          quantum_instance=quantum_instance)
 
@@ -197,7 +197,7 @@ class QNSPSAVQE(VQE):
         self._eval_count = 0
 
         if not self._expect_op:
-            self._expect_op = self.construct_expectation(self._var_form_params, operator)
+            self._expect_op = self.construct_expectation(self._ansatz_params, operator)
 
         # CODE BELOW
         optimizer_settings = {'maxiter': self.maxiter,
@@ -212,12 +212,12 @@ class QNSPSAVQE(VQE):
                               'backend': self._quantum_instance}
 
         if self.natural_spsa:
-            optimizer = QNSPSA(overlap_fn=self.var_form, **optimizer_settings)
+            optimizer = QNSPSA(overlap_fn=self.ansatz, **optimizer_settings)
         else:
             optimizer = SPSA(**optimizer_settings)
 
         vqresult = self.find_minimum(initial_point=self.initial_point,
-                                     var_form=self.var_form,
+                                     ansatz=self.ansatz,
                                      cost_fn=self._expect_op,
                                      optimizer=optimizer)
 
