@@ -70,7 +70,7 @@ class AerPauliExpectation(ExpectationBase):
         if isinstance(operator, PauliSumOp):
             paulis = [(meas[1], meas[0]) for meas in operator.primitive.to_list()]
             snapshot_instruction = SnapshotExpectationValue('expval_measurement', paulis)
-            return CircuitStateFn(snapshot_instruction, coeff=operator.coeff, is_measurement=True)
+            return CircuitStateFn(snapshot_instruction, is_measurement=True)
 
         # Change to Pauli representation if necessary
         if not {'Pauli'} == operator.primitive_strings():

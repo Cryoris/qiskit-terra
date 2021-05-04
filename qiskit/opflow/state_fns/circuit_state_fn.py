@@ -173,7 +173,7 @@ class CircuitStateFn(StateFn):
             # pylint: disable=cyclic-import
             from ..operator_globals import Zero
             return self.compose(CircuitOp(other.primitive,
-                                          other.coeff)).compose(Zero ^ self.num_qubits)
+                                          other.coeff)).compose(other.coeff * Zero ^ self.num_qubits)
 
         return ComposedOp([new_self, other])
 
