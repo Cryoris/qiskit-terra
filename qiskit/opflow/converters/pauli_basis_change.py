@@ -176,7 +176,7 @@ class PauliBasisChange(ConverterBase):
             # If the StateFn/Meas only contains a Pauli, use it directly.
             if isinstance(operator.primitive, PauliOp):
                 cob_instr_op, dest_pauli_op = self.get_cob_circuit(operator.primitive)
-                return self._replacement_fn(cob_instr_op, dest_pauli_op)
+                return operator.coeff * self._replacement_fn(cob_instr_op, dest_pauli_op)
             # TODO make a canonical "distribute" or graph swap as method in ListOp?
             elif operator.primitive.distributive:
                 if operator.primitive.abelian:
