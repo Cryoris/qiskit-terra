@@ -12,6 +12,8 @@
 
 """Unroll a circuit to a given basis."""
 
+from typing import Optional, List, Union
+
 from qiskit.transpiler.basepasses import TransformationPass
 from qiskit.exceptions import QiskitError
 from qiskit.circuit import ControlledGate
@@ -25,15 +27,24 @@ class Unroller(TransformationPass):
     to a desired basis, using decomposition rules defined for each instruction.
     """
 
-    def __init__(self, basis):
+    def __init__(self, basis: Optional[List[Union[str, type]]]) -> None:
         """Unroller initializer.
 
         Args:
-            basis (list[str] or None): Target basis names to unroll to, e.g. `['u3', 'cx']` . If
+            basis: Target basis names to unroll to, e.g. `['u3', 'cx']` or `['u', RZGate]` . If
                 None, does not unroll any gate.
         """
         super().__init__()
         self.basis = basis
+
+    def _is_in_basis(self, node):
+        for basis_op in self.basis:
+            if isinstance(basis_op, str) and node.name == basis_op:
+                return True
+            elif isinstance(basis_op, type) and isinstance(node.op, basis_op):
+                return True
+
+        return False
 
     def run(self, dag):
         """Run the Unroller pass on `dag`.
@@ -62,7 +73,8 @@ class Unroller(TransformationPass):
                 #  backend reports "measure", for example.
                 continue
 
-            if node.name in self.basis:  # If already a base, ignore.
+            # if node.name in self.basis:  # If already a base, ignore.
+            if self._is_in_basis(node):
                 if isinstance(node.op, ControlledGate) and node.op._open_ctrl:
                     pass
                 else:
