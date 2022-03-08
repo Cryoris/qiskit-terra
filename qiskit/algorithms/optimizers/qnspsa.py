@@ -97,6 +97,7 @@ class QNSPSA(SPSA):
         hessian_delay: int = 0,
         lse_solver: Optional[Callable[[np.ndarray, np.ndarray], np.ndarray]] = None,
         initial_hessian: Optional[np.ndarray] = None,
+        initial_hessian_weight: int = 1,
         callback: Optional[CALLBACK] = None,
         termination_checker: Optional[TERMINATIONCHECKER] = None,
     ) -> None:
@@ -171,6 +172,7 @@ class QNSPSA(SPSA):
             regularization=regularization,
             perturbation_dims=perturbation_dims,
             initial_hessian=initial_hessian,
+            initial_hessian_weight=initial_hessian_weight,
             termination_checker=termination_checker,
         )
 

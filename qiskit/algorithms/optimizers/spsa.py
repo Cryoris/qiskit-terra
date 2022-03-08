@@ -142,6 +142,7 @@ class SPSA(Optimizer):
         hessian_delay: int = 0,
         lse_solver: Optional[Callable[[np.ndarray, np.ndarray], np.ndarray]] = None,
         initial_hessian: Optional[np.ndarray] = None,
+        initial_hessian_weight: int = 1,
         callback: Optional[CALLBACK] = None,
         termination_checker: Optional[TERMINATIONCHECKER] = None,
     ) -> None:
@@ -272,6 +273,7 @@ class SPSA(Optimizer):
         self.lse_solver = lse_solver
         self.regularization = regularization
         self.initial_hessian = initial_hessian
+        self.initial_hessian_weight = initial_hessian_weight
 
         # runtime arguments
         self._nfev = None  # the number of function evaluations
@@ -487,7 +489,8 @@ class SPSA(Optimizer):
 
         # precondition gradient with inverse Hessian, if specified
         if self.second_order:
-            smoothed = k / (k + 1) * self._smoothed_hessian + 1 / (k + 1) * hessian
+            weight = k + self.initial_hessian_weight - 1
+            smoothed = weight / (weight + 1) * self._smoothed_hessian + 1 / (weight + 1) * hessian
             self._smoothed_hessian = smoothed
 
             if k > self.hessian_delay:
