@@ -98,6 +98,7 @@ class QNSPSA(SPSA):
         lse_solver: Optional[Callable[[np.ndarray, np.ndarray], np.ndarray]] = None,
         initial_hessian: Optional[np.ndarray] = None,
         initial_hessian_weight: int = 1,
+        momentum: Optional[float] = None,
         callback: Optional[CALLBACK] = None,
         termination_checker: Optional[TERMINATIONCHECKER] = None,
     ) -> None:
@@ -171,6 +172,8 @@ class QNSPSA(SPSA):
             lse_solver=lse_solver,
             regularization=regularization,
             perturbation_dims=perturbation_dims,
+            last_avg=last_avg,
+            momentum=momentum,
             initial_hessian=initial_hessian,
             initial_hessian_weight=initial_hessian_weight,
             termination_checker=termination_checker,
