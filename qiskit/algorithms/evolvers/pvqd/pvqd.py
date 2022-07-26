@@ -298,13 +298,13 @@ class PVQD(RealEvolver):
 
         Raises:
             ValueError: If the evolution time is not positive or the timestep is too small.
-            NotImplementedError: If the evolution problem contains an initial state.
         """
         self._validate_setup()
 
         time = evolution_problem.time
         observables = evolution_problem.aux_operators
         hamiltonian = evolution_problem.hamiltonian
+        initial_state = evolution_problem.initial_state
 
         if not 0 < self.timestep <= time:
             raise ValueError(
@@ -312,15 +312,16 @@ class PVQD(RealEvolver):
                 f"the evolution time ({time})."
             )
 
-        if evolution_problem.initial_state is not None:
-            raise NotImplementedError(
-                "Setting an initial state for the evolution is not yet supported for PVQD."
-            )
+        # if an initial state is given, prepend it to the ansatz
+        if initial_state is None:
+            circuit = self.ansatz
+        else:
+            circuit = self._attach_initial_state(initial_state)
 
         # get the function to evaluate the observables for a given set of ansatz parameters
         if observables is not None:
             evaluate_observables = _get_observable_evaluator(
-                self.ansatz, observables, self.expectation, self._sampler
+                circuit, observables, self.expectation, self._sampler
             )
             observable_values = [evaluate_observables(self.initial_parameters)]
 
@@ -334,7 +335,7 @@ class PVQD(RealEvolver):
         while current_time < time:
             # perform VQE to find the next parameters
             next_parameters, fidelity = self.step(
-                hamiltonian, self.ansatz, parameters[-1], self.timestep, initial_guess
+                hamiltonian, circuit, parameters[-1], self.timestep, initial_guess
             )
 
             # set initial guess to last parameter update
@@ -348,7 +349,7 @@ class PVQD(RealEvolver):
             current_time += self.timestep
             times.append(current_time)
 
-        evolved_state = self.ansatz.bind_parameters(parameters[-1])
+        evolved_state = circuit.bind_parameters(parameters[-1])
 
         result = PVQDResult(
             evolved_state=evolved_state,
@@ -388,3 +389,18 @@ class PVQD(RealEvolver):
                 f"Mismatching number of parameters in the ansatz ({self.ansatz.num_parameters}) "
                 f"and the initial parameters ({len(self.initial_parameters)})."
             )
+
+    def _attach_initial_state(self, initial_state):
+        """Prepend the initial state to the circuit and validate the size matches."""
+        if isinstance(initial_state, StateFn):
+            initial_circuit = initial_state.to_circuit_op().primitive
+        else:
+            initial_circuit = initial_state
+
+        if initial_circuit.num_qubits != self.ansatz.num_qubits:
+            raise ValueError(
+                f"Mismatching number of qubits in the initial state ({initial_circuit.num_qubits}) "
+                f"and the ansatz ({self.ansatz.num_qubits})."
+            )
+
+        return initial_circuit.compose(self.ansatz)

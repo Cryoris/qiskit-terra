@@ -24,7 +24,8 @@ from qiskit.algorithms.evolvers import EvolutionProblem
 from qiskit.algorithms.evolvers.pvqd import PVQD
 from qiskit.algorithms.optimizers import L_BFGS_B, GradientDescent, SPSA, OptimizerResult
 from qiskit.circuit.library import EfficientSU2
-from qiskit.opflow import X, Z, I, MatrixExpectation, PauliExpectation
+from qiskit.opflow import X, Z, I, MatrixExpectation, PauliExpectation, StateFn
+from qiskit.quantum_info import Statevector
 
 
 # pylint: disable=unused-argument, invalid-name
@@ -219,10 +220,18 @@ class TestPVQD(QiskitTestCase):
         with self.assertRaises(QiskitError):
             _ = pvqd.evolve(problem)
 
-    def test_initial_state_raises(self):
-        """Test passing an initial state raises an error for now."""
-        initial_state = QuantumCircuit(2)
-        initial_state.x(0)
+    @data("statefn", "circuit", "mismatched")
+    def test_initial_state(self, kind):
+        """Test an initial state can be passed."""
+        initial_guess = np.zeros(self.ansatz.num_parameters)
+
+        if kind == "circuit":
+            initial_state = QuantumCircuit(2)
+            initial_state.x(0)
+        elif kind == "statefn":
+            initial_state = StateFn([0, 0, 0, 1])
+        else:  # mismatched
+            initial_state = StateFn([0, 1])
 
         problem = EvolutionProblem(
             self.hamiltonian,
@@ -235,12 +244,20 @@ class TestPVQD(QiskitTestCase):
             self.initial_parameters,
             timestep=0.01,
             optimizer=SPSA(maxiter=0, learning_rate=0.1, perturbation=0.01),
+            initial_guess=initial_guess,
             quantum_instance=self.sv_backend,
             expectation=self.expectation,
         )
 
-        with self.assertRaises(NotImplementedError):
-            _ = pvqd.evolve(problem)
+        # check mismatching number of qubits raises an error
+        if kind == "mismatched":
+            with self.assertRaises(ValueError):
+                _ = pvqd.evolve(problem)
+        else:
+            result = pvqd.evolve(problem)
+
+            # check the final state is the initial state (since we didn't do any optimizations)
+            self.assertEqual(Statevector(result.evolved_state), Statevector([0, 0, 0, 1]))
 
 
 class TestPVQDUtils(QiskitTestCase):
