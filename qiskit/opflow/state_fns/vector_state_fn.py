@@ -146,7 +146,7 @@ class VectorStateFn(StateFn):
 
     def to_density_matrix(self, massive: bool = False) -> np.ndarray:
         OperatorBase._check_massive("to_density_matrix", True, self.num_qubits, massive)
-        return self.primitive.to_operator().data * self.coeff
+        return self.primitive.to_operator().data * np.abs(self.coeff) ** 2
 
     def to_matrix(self, massive: bool = False) -> np.ndarray:
         OperatorBase._check_massive("to_matrix", False, self.num_qubits, massive)

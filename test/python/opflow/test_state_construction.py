@@ -236,6 +236,27 @@ class TestStateConstruction(QiskitOpflowTestCase):
         self.assertEqual(len(ex), 3)
         self.assertEqual(ex.eval(), 1)
 
+    def test_statefn_to_density_matrix(self):
+        """Test StateFn conversion to density matrix."""
+        coeff = 2.0
+        statevector = np.array([0.5, 0.5j, 0.5j, -0.5])
+        density_matrix = np.abs(coeff) ** 2 * np.outer(statevector, np.conj(statevector))
+
+        with self.subTest(msg="VectorStateFn"):
+            state = StateFn(statevector, coeff=coeff)
+            self.assertTrue(np.allclose(density_matrix, state.to_density_matrix()))
+
+        with self.subTest(msg="CircuitStateFn"):
+            circuit = QuantumCircuit(2)
+            circuit.h([0, 1])
+            circuit.s([0, 1])
+            state = CircuitStateFn(circuit, coeff=coeff)
+            self.assertTrue(np.allclose(density_matrix, state.to_density_matrix()))
+
+        with self.subTest(msg="DictStateFn"):
+            state = StateFn({"00": 0.5, "10": 0.5j, "01": 0.5j, "11": -0.5}, coeff=coeff)
+            self.assertTrue(np.allclose(density_matrix, state.to_density_matrix()))
+
 
 if __name__ == "__main__":
     unittest.main()
