@@ -1,0 +1,7 @@
+---
+fixes:
+  - |
+    Fix the `to_density_matrix` method in :class:`.DictStateFn` , :class:`.VectorStateFn`
+    and :class:`.CircuitStateFn` . Previously these methods did not handle the coefficient
+    of the state function correctly and the :class:`DictStateFn` returned a diagonal matrix
+    instead of the outer product of the state vector.
