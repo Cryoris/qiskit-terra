@@ -182,7 +182,8 @@ class DictStateFn(StateFn):
 
     def to_density_matrix(self, massive: bool = False) -> np.ndarray:
         OperatorBase._check_massive("to_density_matrix", True, self.num_qubits, massive)
-        return VectorStateFn(self.to_matrix(massive=massive)).to_density_matrix()
+        probs = np.abs(self.to_matrix(massive=massive)) ** 2  # abs due to the coeff
+        return np.eye(probs.size) * probs
 
     def to_matrix(self, massive: bool = False) -> np.ndarray:
         OperatorBase._check_massive("to_matrix", False, self.num_qubits, massive)

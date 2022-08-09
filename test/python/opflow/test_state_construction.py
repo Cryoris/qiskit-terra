@@ -255,7 +255,9 @@ class TestStateConstruction(QiskitOpflowTestCase):
 
         with self.subTest(msg="DictStateFn"):
             state = StateFn({"00": 0.5, "10": 0.5j, "01": 0.5j, "11": -0.5}, coeff=coeff)
-            self.assertTrue(np.allclose(density_matrix, state.to_density_matrix()))
+            self.assertTrue(
+                np.allclose(np.diagonal(density_matrix), np.diagonal(state.to_density_matrix()))
+            )
 
 
 if __name__ == "__main__":
