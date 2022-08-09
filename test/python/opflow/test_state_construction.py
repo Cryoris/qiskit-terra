@@ -238,7 +238,7 @@ class TestStateConstruction(QiskitOpflowTestCase):
 
     def test_statefn_to_density_matrix(self):
         """Test StateFn conversion to density matrix."""
-        coeff = 2.0
+        coeff = 2.0 + 1.5j
         statevector = np.array([0.5, 0.5j, 0.5j, -0.5])
         density_matrix = np.abs(coeff) ** 2 * np.outer(statevector, np.conj(statevector))
 
