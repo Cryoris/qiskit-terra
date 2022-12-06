@@ -20,10 +20,11 @@ from copy import copy
 from qiskit import QuantumCircuit
 from qiskit.primitives import BaseSampler
 from qiskit.providers import Options
+from qiskit.result import QuasiDistribution
 
-from ..exceptions import AlgorithmError
 from .base_state_fidelity import BaseStateFidelity
 from .state_fidelity_result import StateFidelityResult
+from ..exceptions import AlgorithmError
 
 
 class ComputeUncompute(BaseStateFidelity):
@@ -49,7 +50,12 @@ class ComputeUncompute(BaseStateFidelity):
 
     """
 
-    def __init__(self, sampler: BaseSampler, options: Options | None = None) -> None:
+    def __init__(
+        self,
+        sampler: BaseSampler,
+        options: Options | None = None,
+        local: bool = False,
+    ) -> None:
         """
         Args:
             sampler: Sampler primitive instance.
@@ -57,6 +63,8 @@ class ComputeUncompute(BaseStateFidelity):
                 The order of priority is: options in ``run`` method > fidelity's
                 default options > primitive's default setting.
                 Higher priority setting overrides lower priority setting.
+            local: If ``True``, evaluate the overlap with the sum over all single-qubit zero
+                projectors instead of the local projector.
 
         Raises:
             ValueError: If the sampler is not an instance of ``BaseSampler``.
@@ -69,6 +77,9 @@ class ComputeUncompute(BaseStateFidelity):
         self._default_options = Options()
         if options is not None:
             self._default_options.update_options(**options)
+
+        self.local = local
+
         super().__init__()
 
     def create_fidelity_circuit(
@@ -145,7 +156,10 @@ class ComputeUncompute(BaseStateFidelity):
         except Exception as exc:
             raise AlgorithmError("Sampler job failed!") from exc
 
-        raw_fidelities = [prob_dist.get(0, 0) for prob_dist in result.quasi_dists]
+        raw_fidelities = [
+            self._evaluate_projector(quasi_dist, circuits[i].num_qubits)
+            for i, quasi_dist in enumerate(result.quasi_dists)
+        ]
         fidelities = self._truncate_fidelities(raw_fidelities)
 
         return StateFidelityResult(
@@ -190,3 +204,17 @@ class ComputeUncompute(BaseStateFidelity):
         opts = copy(self._sampler.options)
         opts.update_options(**options)
         return opts
+
+    def _evaluate_projector(self, quasi_dist: QuasiDistribution, num_qubits: int) -> float:
+        if self.local is False:
+            return quasi_dist.get(0, 0)
+
+        result = 0
+        for state, prob in quasi_dist.binary_probabilities(num_qubits):
+            # since the QuasiDistribution might contain zero counts, skip if the probability is zero
+            if prob > 0:
+                result += prob * state.count("0")
+
+        result /= num_qubits
+
+        return result
