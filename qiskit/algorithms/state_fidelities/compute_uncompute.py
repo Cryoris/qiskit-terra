@@ -210,7 +210,7 @@ class ComputeUncompute(BaseStateFidelity):
             return quasi_dist.get(0, 0)
 
         result = 0
-        for state, prob in quasi_dist.binary_probabilities(num_qubits):
+        for state, prob in quasi_dist.binary_probabilities(num_qubits).items():
             # since the QuasiDistribution might contain zero counts, skip if the probability is zero
             if prob > 0:
                 result += prob * state.count("0")
