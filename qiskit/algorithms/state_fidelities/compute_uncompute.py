@@ -54,17 +54,20 @@ class ComputeUncompute(BaseStateFidelity):
         self,
         sampler: BaseSampler,
         options: Options | None = None,
-        local: bool = False,
+        local: int = 0,
     ) -> None:
-        """
+        r"""
         Args:
             sampler: Sampler primitive instance.
             options: Primitive backend runtime options used for circuit execution.
                 The order of priority is: options in ``run`` method > fidelity's
                 default options > primitive's default setting.
                 Higher priority setting overrides lower priority setting.
-            local: If ``True``, evaluate the overlap with the sum over all single-qubit zero
-                projectors instead of the local projector.
+            local: If an integer larger than 0, evaluate the overlap with the sum over all
+                single-qubit zero projectors instead of the local projector, computed as
+                :math:`\sum_b \text{pr}(b) (\#\{b == 0\} / n)^m`, where :math:`b` sums over the
+                sampled bitstrings, :math:`n` is the length of the bitstrings and :math:`m`
+                is the value of `local`.
 
         Raises:
             ValueError: If the sampler is not an instance of ``BaseSampler``.
@@ -206,15 +209,13 @@ class ComputeUncompute(BaseStateFidelity):
         return opts
 
     def _evaluate_projector(self, quasi_dist: QuasiDistribution, num_qubits: int) -> float:
-        if self.local is False:
+        if self.local == 0:
             return quasi_dist.get(0, 0)
 
         result = 0
         for state, prob in quasi_dist.binary_probabilities(num_qubits).items():
             # since the QuasiDistribution might contain zero counts, skip if the probability is zero
             if prob > 0:
-                result += prob * state.count("0")
-
-        result /= num_qubits
+                result += prob * (state.count("0") / num_qubits) ** self.local
 
         return result
