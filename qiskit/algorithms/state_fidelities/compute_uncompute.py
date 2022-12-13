@@ -55,6 +55,7 @@ class ComputeUncompute(BaseStateFidelity):
         sampler: BaseSampler,
         options: Options | None = None,
         local: int = 0,
+        damping: float = 1,
     ) -> None:
         r"""
         Args:
@@ -82,6 +83,7 @@ class ComputeUncompute(BaseStateFidelity):
             self._default_options.update_options(**options)
 
         self.local = local
+        self.damping = damping
 
         super().__init__()
 
@@ -160,7 +162,7 @@ class ComputeUncompute(BaseStateFidelity):
             raise AlgorithmError("Sampler job failed!") from exc
 
         raw_fidelities = [
-            self._evaluate_projector(quasi_dist, circuits[i].num_qubits)
+            self._evaluate_projector(quasi_dist, circuits[i].num_qubits) * self.damping
             for i, quasi_dist in enumerate(result.quasi_dists)
         ]
         fidelities = self._truncate_fidelities(raw_fidelities)
