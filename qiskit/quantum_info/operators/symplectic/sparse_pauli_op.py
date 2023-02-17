@@ -141,6 +141,8 @@ class SparsePauliOp(LinearOp):
         # Initialize LinearOp
         super().__init__(num_qubits=self._pauli_list.num_qubits)
 
+        self.sparse_data = None
+
     def __array__(self, dtype=None):
         if dtype:
             return np.asarray(self.to_matrix(), dtype=dtype)
@@ -319,7 +321,14 @@ class SparsePauliOp(LinearOp):
         # `coeffs = np.kron(self.coeffs, other.coeffs)`
         # since `self.coeffs` and `other.coeffs` are both 1d arrays.
         coeffs = np.multiply.outer(self.coeffs, other.coeffs).ravel()
-        return SparsePauliOp(pauli_list, coeffs, copy=False)
+
+        out = SparsePauliOp(pauli_list, coeffs, copy=False)
+
+        if self.sparse_data is not None and other.sparse_data is not None:
+            sparse_out = self.sparse_data.dot(other.sparse_data)
+            out.sparse_data = sparse_out
+
+        return out
 
     def tensor(self, other):
         if not isinstance(other, SparsePauliOp):
@@ -465,9 +474,11 @@ class SparsePauliOp(LinearOp):
             z = paulis_z[non_zero_indexes]
             coeffs = coeffs[non_zero]
 
-        return SparsePauliOp(
+        out = SparsePauliOp(
             PauliList.from_symplectic(z, x), coeffs, ignore_pauli_phase=True, copy=False
         )
+        out.sparse_data = self.sparse_data
+        return out
 
     def argsort(self, weight=False):
         """Return indices for sorting the rows of the table.

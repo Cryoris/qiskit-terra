@@ -19,6 +19,7 @@ from numbers import Number
 from typing import Dict
 
 import numpy as np
+import scipy as sc
 
 from qiskit.circuit.quantumcircuit import QuantumCircuit
 from qiskit.circuit.instruction import Instruction
@@ -385,6 +386,12 @@ class Statevector(QuantumState, TolerancesMixin):
                 raise QiskitError("Cannot apply QuantumCircuit to non-qubit Statevector.")
             return self._evolve_instruction(ret, other, qargs=qargs)
 
+        if isinstance(other, sc.sparse.spmatrix):
+            if qargs is not None:
+                raise QiskitError("No subsystem evolution supported for now.")
+            out = other.dot(ret)
+            return Statevector(out)
+
         # Evolution by an Operator
         if not isinstance(other, Operator):
             dims = self.dims(qargs=qargs)
@@ -495,10 +502,13 @@ class Statevector(QuantumState, TolerancesMixin):
             return self._expectation_value_pauli(oper, qargs)
 
         if isinstance(oper, SparsePauliOp):
-            return sum(
-                coeff * self._expectation_value_pauli(Pauli((z, x)), qargs)
-                for z, x, coeff in zip(oper.paulis.z, oper.paulis.x, oper.coeffs)
-            )
+            # if it has a cached sparse representation
+            if oper.sparse_data is None:
+                return sum(
+                    coeff * self._expectation_value_pauli(Pauli((z, x)), qargs)
+                    for z, x, coeff in zip(oper.paulis.z, oper.paulis.x, oper.coeffs)
+                )
+            oper = oper.sparse_data
 
         val = self.evolve(oper, qargs=qargs)
         conj = self.conjugate()
