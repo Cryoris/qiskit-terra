@@ -14,6 +14,3 @@
 
 # pylint: disable=unused-import
 from qiskit.circuit.library.generalized_gates.mcg_up_to_diagonal import MCGupDiag
-from qiskit.extensions import _deprecate_extension
-
-_deprecate_extension("MCGupDiag", has_replacement=True)
