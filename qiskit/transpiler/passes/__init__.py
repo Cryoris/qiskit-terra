@@ -274,6 +274,8 @@ from .scheduling import ALAPSchedule
 from .scheduling import ASAPSchedule
 from .scheduling import DynamicalDecoupling
 from .scheduling import AlignMeasures
+from .scheduling import CombineAdjacentDelays
+from .scheduling import DynamicalDecouplingMulti
 
 # additional utility passes
 from .utils import CheckMap
