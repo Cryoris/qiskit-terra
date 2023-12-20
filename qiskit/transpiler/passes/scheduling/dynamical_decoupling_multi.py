@@ -96,69 +96,58 @@ class DynamicalDecouplingMulti(TransformationPass):
                         new_dag.apply_operation_back(Delay(nd.op.duration), [q], [])
                     continue
 
-            print(f'examining delay on {physical_qubits}')
-
             start_time = self.property_set['node_start_time'][nd]
             end_time = start_time + nd.op.duration
 
-            # color each qubit in this delay instruction
-            coloring = {i: -1 for i in physical_qubits}
-            for i, dag_qubit in enumerate(dag_qubits):
-                physical_qubit = physical_qubits[i]
-                ctrl_spectator = tgt_spectator = False     # is the qubit a control or target spectator
-                adj_colors = []                            # is any of its adjacent qubits already colored
-                for adj_physical_qubit in adjacency_map.neighbors(physical_qubit):
-                    adj_dag_qubit = dag.qubits[adj_physical_qubit]
-                    for adj_node in dag.nodes_on_wire(adj_dag_qubit, only_ops=True):
-                        adj_start_time = self.property_set['node_start_time'][adj_node]
-                        adj_end_time = adj_start_time + adj_node.op.duration
-                        if adj_start_time < end_time and adj_end_time > start_time:
-                            if isinstance(adj_node.op, (CXGate, ECRGate)):
-                                ctrl, tgt = [qubit_index_map[q] for q in adj_node.qargs]
-                                if adj_physical_qubit == ctrl:
-                                    ctrl_spectator = True
-                                elif adj_physical_qubit == tgt:
-                                    tgt_spectator = True
-                            elif isinstance(adj_node.op, Delay):
-                                adj_color = coloring.get(adj_physical_qubit)
-                                if adj_color:
-                                    adj_colors.append(adj_color)
-                print(f"delay on {physical_qubit}: ",
-                      f"ctrl_spectator: {ctrl_spectator}, tgt_spectator: {tgt_spectator}, adj_colors: {adj_colors}")
-                if tgt_spectator and not ctrl_spectator:
-                    coloring[physical_qubit] = 0
-                elif not tgt_spectator and ctrl_spectator:
-                    coloring[physical_qubit] = 1
-                elif tgt_spectator and ctrl_spectator:
-                    coloring[physical_qubit] = 2
-                print(adj_colors)
-                if adj_colors and max(adj_colors) >= 0:
-                    coloring[physical_qubit] = max(adj_colors) + 1
+            # 1) color each qubit in this delay instruction
+            neighborhood = set([neighbor for q in physical_qubits for neighbor in adjacency_map.neighbors(q)])
+            neighborhood |= set(physical_qubits)
+            coloring = {i: None for i in neighborhood}
+            # first color qubits that are ctrl/tgt of CX/ECR, in this neighborhood & this time interval
+            for q in neighborhood:
+                dag_q = dag.qubits[q]
+                for q_node in dag.nodes_on_wire(dag_q, only_ops=True):
+                    adj_start_time = self.property_set['node_start_time'][q_node]
+                    adj_end_time = adj_start_time + q_node.op.duration
+                    if (adj_start_time < end_time and adj_end_time > start_time
+                        and isinstance(q_node.op, (CXGate, ECRGate))):
+                        ctrl, tgt = [qubit_index_map[q] for q in q_node.qargs]
+                        if q == ctrl:
+                            coloring[q] = 0
+                        if q == tgt:
+                            coloring[q] = 1
+            # now color delay qubits, subject to previous colors and keeping to as few colors as possible
+            for physical_qubit, dag_qubit in zip(physical_qubits, dag_qubits):
+                if coloring[physical_qubit] is None:
+                    adjacent_colors = set(coloring[neighbor]
+                                          for neighbor in adjacency_map.neighbors(physical_qubit)
+                                          if coloring[neighbor] is not None)
+                    color = 0
+                    while color in adjacent_colors:
+                        color += 1
+                    coloring[physical_qubit] = color
 
-            # insert the actual DD sequence
-            for i, dag_qubit in enumerate(dag_qubits):
-                physical_qubit = physical_qubits[i]
+            # 2) insert the actual DD sequences
+            for physical_qubit, dag_qubit in zip(physical_qubits, dag_qubits):
                 color = coloring[physical_qubit]
 
-                print(f'inserting DD: qubit {physical_qubit}, color {color}')
                 if color == 0:
-                    dd_sequence = [XGate(), RZGate(np.pi), XGate(), RZGate(-np.pi)]
-                    spacing = [1/2, 1/2, 0, 0, 0]
-                    addition = [1, 1, 0, 0, 0, 0]
-                if color == 1:
-                    dd_sequence = [XGate(), RZGate(np.pi), XGate(), RZGate(-np.pi)]
-                    spacing = [1/4, 1/2, 0, 0, 1/4]
-                    addition = [0, 1, 0, 0, 0, 1]
+                    dd_sequence = [XGate(), XGate()]
+                    num_pulses = 2
+                    spacing = [1/2, 1/2, 0]
+                elif color == 1:
+                    dd_sequence = [XGate(), XGate()]
+                    num_pulses = 2
+                    spacing = [1/4, 1/2, 1/4]
                 elif color == 2:
-                    dd_sequence = [XGate(), RZGate(np.pi), XGate(), RZGate(-np.pi),
-                                   XGate(), RZGate(np.pi), XGate(), RZGate(-np.pi)]
-                    spacing = [1/4, 1/4, 0, 0, 1/4, 1/4, 0, 0, 0]
-                    addition = [0, 1, 0, 0, 1, 0, 0, 0, 0]
+                    dd_sequence = [XGate(), XGate(), XGate(), XGate()]
+                    num_pulses = 4
+                    spacing = [1/4, 1/4, 1/4, 1/4, 0]
                 else:
                     continue
 
-
                 dd_sequence_duration = 0
+                num_pulses = len(dd_sequence)
                 for gate in dd_sequence:
                     dd_sequence_duration += self._durations.get(gate, physical_qubit)
                 slack = nd.op.duration - dd_sequence_duration
@@ -170,9 +159,11 @@ class DynamicalDecouplingMulti(TransformationPass):
                 taus = _constrained_length(slack * np.asarray(spacing))
                 unused_slack = slack - sum(taus)  # unused, due to rounding to int multiples of dt
                 middle_index = int((len(taus) - 1) / 2)  # arbitrary: redistribute to middle
-                taus[middle_index] += unused_slack  # now we add up to original delay duration
+                to_middle =  _constrained_length(unused_slack)
+                taus[middle_index] += to_middle # now we add up to original delay duration
+                if unused_slack - to_middle:
+                    taus[-1] += unused_slack - to_middle
 
-                num_pulses = len(dd_sequence)
                 sequence_gphase = 0
                 if num_pulses != 1:
                     if num_pulses % 2 != 0:
