@@ -19,6 +19,8 @@ from .scheduling import ALAPScheduleAnalysis, ASAPScheduleAnalysis, SetIOLatency
 from .time_unit_conversion import TimeUnitConversion
 from .padding import PadDelay, PadDynamicalDecoupling
 from .alignments import InstructionDurationCheck, ValidatePulseGates, ConstrainedReschedule
+from .combine_adjacent_delays import CombineAdjacentDelays
+from .dynamical_decoupling_multi import DynamicalDecouplingMulti
 
 # For backward compability
 from . import alignments as instruction_alignments
