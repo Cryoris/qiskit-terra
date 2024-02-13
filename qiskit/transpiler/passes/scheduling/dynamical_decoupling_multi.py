@@ -16,22 +16,21 @@ import itertools
 import warnings
 
 import numpy as np
-import retworkx as rx
+import rustworkx as rx
 
 from qiskit.circuit.delay import Delay
 from qiskit.circuit.reset import Reset
 from qiskit.circuit.library.standard_gates import IGate, XGate, RZGate, CXGate, ECRGate
 from qiskit.dagcircuit import DAGOpNode, DAGInNode
 from qiskit.quantum_info.operators.predicates import matrix_equal
-from qiskit.quantum_info.synthesis import OneQubitEulerDecomposer
+from qiskit.synthesis.one_qubit import OneQubitEulerDecomposer
 from qiskit.transpiler.passes.optimization import Optimize1qGates
 from qiskit.transpiler.basepasses import TransformationPass
 from qiskit.transpiler.exceptions import TranspilerError
 
 
 class DynamicalDecouplingMulti(TransformationPass):
-    """Dynamical decoupling insertion pass on multi-qubit delays.
-    """
+    """Dynamical decoupling insertion pass on multi-qubit delays."""
 
     def __init__(self, target, skip_reset_qubits=True, pulse_alignment=1, skip_threshold=1):
         """Dynamical decoupling initializer.
@@ -96,21 +95,26 @@ class DynamicalDecouplingMulti(TransformationPass):
                         new_dag.apply_operation_back(Delay(nd.op.duration), [q], [])
                     continue
 
-            start_time = self.property_set['node_start_time'][nd]
+            start_time = self.property_set["node_start_time"][nd]
             end_time = start_time + nd.op.duration
 
             # 1) color each qubit in this delay instruction
-            neighborhood = set([neighbor for q in physical_qubits for neighbor in adjacency_map.neighbors(q)])
+            neighborhood = set(
+                [neighbor for q in physical_qubits for neighbor in adjacency_map.neighbors(q)]
+            )
             neighborhood |= set(physical_qubits)
             coloring = {i: None for i in neighborhood}
             # first color qubits that are ctrl/tgt of CX/ECR, in this neighborhood & this time interval
             for q in neighborhood:
                 dag_q = dag.qubits[q]
                 for q_node in dag.nodes_on_wire(dag_q, only_ops=True):
-                    adj_start_time = self.property_set['node_start_time'][q_node]
+                    adj_start_time = self.property_set["node_start_time"][q_node]
                     adj_end_time = adj_start_time + q_node.op.duration
-                    if (adj_start_time < end_time and adj_end_time > start_time
-                        and isinstance(q_node.op, (CXGate, ECRGate))):
+                    if (
+                        adj_start_time < end_time
+                        and adj_end_time > start_time
+                        and isinstance(q_node.op, (CXGate, ECRGate))
+                    ):
                         ctrl, tgt = [qubit_index_map[q] for q in q_node.qargs]
                         if q == ctrl:
                             coloring[q] = 0
@@ -119,9 +123,11 @@ class DynamicalDecouplingMulti(TransformationPass):
             # now color delay qubits, subject to previous colors and keeping to as few colors as possible
             for physical_qubit, dag_qubit in zip(physical_qubits, dag_qubits):
                 if coloring[physical_qubit] is None:
-                    adjacent_colors = set(coloring[neighbor]
-                                          for neighbor in adjacency_map.neighbors(physical_qubit)
-                                          if coloring[neighbor] is not None)
+                    adjacent_colors = set(
+                        coloring[neighbor]
+                        for neighbor in adjacency_map.neighbors(physical_qubit)
+                        if coloring[neighbor] is not None
+                    )
                     color = 0
                     while color in adjacent_colors:
                         color += 1
@@ -134,15 +140,15 @@ class DynamicalDecouplingMulti(TransformationPass):
                 if color == 0:
                     dd_sequence = [XGate(), XGate()]
                     num_pulses = 2
-                    spacing = [1/2, 1/2, 0]
+                    spacing = [1 / 2, 1 / 2, 0]
                 elif color == 1:
                     dd_sequence = [XGate(), XGate()]
                     num_pulses = 2
-                    spacing = [1/4, 1/2, 1/4]
+                    spacing = [1 / 4, 1 / 2, 1 / 4]
                 elif color == 2:
                     dd_sequence = [XGate(), XGate(), XGate(), XGate()]
                     num_pulses = 4
-                    spacing = [1/4, 1/4, 1/4, 1/4, 0]
+                    spacing = [1 / 4, 1 / 4, 1 / 4, 1 / 4, 0]
                 else:
                     continue
 
@@ -159,20 +165,24 @@ class DynamicalDecouplingMulti(TransformationPass):
                 taus = _constrained_length(slack * np.asarray(spacing))
                 unused_slack = slack - sum(taus)  # unused, due to rounding to int multiples of dt
                 middle_index = int((len(taus) - 1) / 2)  # arbitrary: redistribute to middle
-                to_middle =  _constrained_length(unused_slack)
-                taus[middle_index] += to_middle # now we add up to original delay duration
+                to_middle = _constrained_length(unused_slack)
+                taus[middle_index] += to_middle  # now we add up to original delay duration
                 if unused_slack - to_middle:
                     taus[-1] += unused_slack - to_middle
 
                 sequence_gphase = 0
                 if num_pulses != 1:
                     if num_pulses % 2 != 0:
-                        raise TranspilerError("DD sequence must contain an even number of gates (or 1).")
+                        raise TranspilerError(
+                            "DD sequence must contain an even number of gates (or 1)."
+                        )
                     noop = np.eye(2)
                     for gate in dd_sequence:
                         noop = noop.dot(gate.to_matrix())
                     if not matrix_equal(noop, IGate().to_matrix(), ignore_phase=True):
-                        raise TranspilerError("The DD sequence does not make an identity operation.")
+                        raise TranspilerError(
+                            "The DD sequence does not make an identity operation."
+                        )
                     sequence_gphase = np.angle(noop[0][0])
 
                 for tau, gate in itertools.zip_longest(taus, dd_sequence):
