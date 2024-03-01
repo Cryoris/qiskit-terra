@@ -17,7 +17,6 @@ import io
 import math
 import os
 import sys
-import unittest
 from logging import StreamHandler, getLogger
 from unittest.mock import patch
 import numpy as np
@@ -1645,6 +1644,27 @@ class TestTranspile(QiskitTestCase):
         result = transpile(qc, target=target, optimization_level=opt_level)
 
         self.assertEqual(Operator.from_circuit(result), Operator.from_circuit(qc))
+
+    @data(0, 1, 2, 3)
+    def test_transpile_control_flow_no_backend(self, opt_level):
+        """Test `transpile` with control flow and no specified hardware constraints."""
+        qc = QuantumCircuit(QuantumRegister(1, "q"), ClassicalRegister(1, "c"))
+        qc.h(0)
+        qc.measure(0, 0)
+        with qc.if_test((qc.clbits[0], False)):
+            qc.x(0)
+        with qc.while_loop((qc.clbits[0], True)):
+            qc.x(0)
+        with qc.for_loop(range(2)):
+            qc.x(0)
+        with qc.switch(qc.cregs[0]) as case:
+            with case(case.DEFAULT):
+                qc.x(0)
+        qc.measure(0, 0)
+
+        transpiled = transpile(qc, optimization_level=opt_level)
+        # There's nothing that can be optimized here.
+        self.assertEqual(qc, transpiled)
 
     @data(0, 1, 2, 3)
     def test_transpile_with_custom_control_flow_target(self, opt_level):
@@ -3336,8 +3356,6 @@ class TestTranspileMultiChipTarget(QiskitTestCase):
     def test_transpile_does_not_affect_backend_coupling(self, opt_level):
         """Test that transpiliation of a circuit does not mutate the `CouplingMap` stored by a V2
         backend.  Regression test of gh-9997."""
-        if opt_level == 3:
-            raise unittest.SkipTest("unitary resynthesis fails due to gh-10004")
         qc = QuantumCircuit(127)
         for i in range(1, 127):
             qc.ecr(0, i)
@@ -3383,6 +3401,7 @@ class TestTranspileMultiChipTarget(QiskitTestCase):
             target=target,
             optimization_level=optimization_level,
             scheduling_method=scheduling_method,
+            seed_transpiler=42,
         )
         invalid_qubits = {
             4,
