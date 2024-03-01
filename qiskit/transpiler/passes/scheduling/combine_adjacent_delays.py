@@ -185,6 +185,8 @@ class ReplacementDelay:
 class CombineAdjacentDelays(TransformationPass):
     """Combine :class:`.Delay` instructions on adjacent qubits.
 
+    TODO: This should update the property_set["node_start_time"] to avoid having to call
+          a schedule analysis after ths pass
     TODO: Whatever object ends up in the circuit should be API-documented.
     """
 
@@ -201,17 +203,6 @@ class CombineAdjacentDelays(TransformationPass):
         self._min_joinable_delay_duration = min_joinable_delay_duration
 
     def run(self, dag: DAGCircuit):
-        # TODO: remove this checkblock, its currently here to check the node start times
-        print(dag_to_circuit(dag).draw(idle_wires=False))
-        print(
-            [
-                node
-                for node in self.property_set["node_start_time"]
-                if node.op.name == "delay" and dag.find_bit(node.qargs[0]).index < 4
-            ]
-        )
-        # end check block
-
         bit_idx_locs = {bit: idx for idx, bit in enumerate(dag.qubits)}
 
         # Find and sort every leading/trailing edge of a delay in the circuit.
@@ -327,7 +318,6 @@ class CombineAdjacentDelays(TransformationPass):
         replacement_delay_to_placeholder_map = defaultdict(list)
 
         for doomed_delay_node, replacements in doomed_delay_to_replacements_map.items():
-            print("doing sth")
             placeholder_delay = QuantumCircuit(1)
             for replacement in replacements:
                 placeholder_delay.delay(replacement.new_delay_op.duration, 0)
@@ -376,14 +366,6 @@ class CombineAdjacentDelays(TransformationPass):
             ):
                 raise RuntimeError([bit_idx_locs[q] for q in delay_node.qargs])
 
-        print(
-            [
-                node
-                for node in self.property_set["node_start_time"]
-                if node.op.name == "delay" and dag.find_bit(node.qargs[0]).index < 4
-            ]
-        )
-        print(dag_to_circuit(dag).draw(idle_wires=False))
         return dag
 
 
