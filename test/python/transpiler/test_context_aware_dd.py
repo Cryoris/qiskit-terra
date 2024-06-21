@@ -1,5 +1,5 @@
-from qiskit.circuit import QuantumCircuit
-from qiskit.circuit.library import SXGate, CXGate
+from qiskit.circuit import QuantumCircuit, Delay
+from qiskit.circuit.library import SXGate, CXGate, XGate
 from qiskit.transpiler import PassManager, Target, InstructionProperties, InstructionDurations
 from qiskit.transpiler.passes import (
     SetLayout,
@@ -27,7 +27,7 @@ class TestContextAwareDD(QiskitTestCase):
         num_qubits = 6
         target = Target(num_qubits=num_qubits, dt=1e-9)
         # bidirectional linear next neighbor
-        linear_topo = [(i, i + 1) for i in range(num_qubits - 1)]
+        linear_topo = [(i, i + 1) for i in range(num_qubits - 1)] + [(3, 5)]
         linear_topo += [tuple(reversed(connection)) for connection in linear_topo]
         cx_props = {
             connection: InstructionProperties(duration=1e-6, error=1e-2)
@@ -36,8 +36,13 @@ class TestContextAwareDD(QiskitTestCase):
         sx_props = {
             (i,): InstructionProperties(duration=1e-8, error=1e-4) for i in range(num_qubits)
         }
+        x_props = {
+            (i,): InstructionProperties(duration=2e-8, error=1e-4) for i in range(num_qubits)
+        }
         target.add_instruction(CXGate(), cx_props)
         target.add_instruction(SXGate(), sx_props)
+        target.add_instruction(XGate(), x_props)
+        target.add_instruction(Delay(1), sx_props)
 
         self.toy_target = target
 
@@ -55,13 +60,13 @@ class TestContextAwareDD(QiskitTestCase):
     def paper_setting(self):
         # circuit from the paper
         circuit = QuantumCircuit(6)
-        circuit.sx(circuit.qubits)
+        circuit.barrier()
         circuit.cx(1, 0)
         circuit.cx(3, 4)
-        circuit.sx(circuit.qubits)
+        circuit.barrier()
         circuit.cx(1, 2)
         circuit.cx(4, 5)
-        circuit.sx(circuit.qubits)
+        circuit.barrier()
         circuit.cx(1, 2)
 
         initial_layout = [0, 1, 4, 7, 10, 12]
@@ -73,12 +78,12 @@ class TestContextAwareDD(QiskitTestCase):
 
         TODO check the final circuit has expected structure
         """
-        backend = FakeHanoiV2()
-        target = backend.target
-        # target = self.toy_target
+        # backend = FakeHanoiV2()
+        # target = backend.target
+        target = self.toy_target
 
         durations = target.durations()
-        schedule_analysis = ALAPScheduleAnalysis(durations, target)
+        schedule_analysis = ASAPScheduleAnalysis(durations, target)
         dd = PassManager(
             [
                 CombineAdjacentDelays(target),
@@ -88,10 +93,10 @@ class TestContextAwareDD(QiskitTestCase):
             ]
         )
 
-        # circuit, initial_layout = self.paper_setting()
-        circuit, initial_layout = self.simple_setting()
-        # schedule_pm = _get_schedule_pm(target, list(range(target.num_qubits)))
-        schedule_pm = _get_schedule_pm(target, initial_layout)
+        circuit, initial_layout = self.paper_setting()
+        # circuit, initial_layout = self.simple_setting()
+        schedule_pm = _get_schedule_pm(target, list(range(target.num_qubits)))
+        # schedule_pm = _get_schedule_pm(target, initial_layout)
 
         pm = schedule_pm + dd
 
