@@ -1,6 +1,6 @@
 import logging
 
-from pprint import pformat, pprint
+from pprint import pformat
 from dataclasses import dataclass
 from collections import defaultdict, Counter
 
@@ -8,9 +8,9 @@ from typing import List, Set
 
 from qiskit.circuit import Delay, QuantumCircuit, Qubit
 from qiskit.dagcircuit import DAGCircuit
-from qiskit.converters import circuit_to_dag, dag_to_circuit
+from qiskit.converters import circuit_to_dag
 from qiskit.dagcircuit import DAGOpNode
-from qiskit.transpiler import TransformationPass, CouplingMap, Target
+from qiskit.transpiler import TransformationPass, Target
 
 logger = logging.getLogger(__name__)
 
@@ -18,8 +18,8 @@ logger = logging.getLogger(__name__)
 @dataclass
 class DelayEvent:
     "Represent the start or ending event for each delay in the input circuit."
-    type: str  # One of 'begin' or 'end'
-    time: int  # Time in the circuit, in dt
+    type: str  # One of 'begin' or 'end'  TODO could be an Enum
+    time: int  # Time in thi.e.e circuit, in dt
     op_node: DAGOpNode  # The node for the circuit delay
 
     @property
@@ -101,17 +101,6 @@ class GroupedDelayEvent:
 class AdjacentGroupedDelayBlock:
     "Collection of circuit delay groups which are collectively adjacent in time and on device."
     events: List[GroupedDelayEvent]
-
-    # TODO: I guess this can go
-    def _old_validate(self):
-        for idx, grouped_delay_event in enumerate(self.events):
-            if idx < len(grouped_delay_block.events) - 1:
-                if grouped_delay_event.time > self.events[idx + 1].time:
-                    raise RuntimeError("grouped_delay_block not ordered by time")
-
-                if grouped_delay_event.time == self.events[idx + 1].time:
-                    if (grouped_delay_event.type, self.events[idx + 1].type) != ("begin", "end"):
-                        raise RuntimeError("grouped_delay_block not ordered by event type")
 
     def validate(self):
         # events in order start end, type
