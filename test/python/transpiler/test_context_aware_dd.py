@@ -24,10 +24,14 @@ class TestContextAwareDD(QiskitTestCase):
 
     def setUp(self):
         super().setUp()
-        num_qubits = 6
+        num_qubits = 5
+
+        self.t_cx = 1e-6
+        self.t_sx = 1e-8
+        self.t_x = 2e-8
         target = Target(num_qubits=num_qubits, dt=1e-9)
         # bidirectional linear next neighbor
-        linear_topo = [(i, i + 1) for i in range(num_qubits - 1)] + [(3, 5)]
+        linear_topo = [(i, i + 1) for i in range(num_qubits - 1)]
         linear_topo += [tuple(reversed(connection)) for connection in linear_topo]
         cx_props = {
             connection: InstructionProperties(duration=1e-6, error=1e-2)
@@ -47,15 +51,14 @@ class TestContextAwareDD(QiskitTestCase):
         self.toy_target = target
 
     def simple_setting(self):
-        simple = QuantumCircuit(4)
-        simple.sx(simple.qubits)
-        simple.cx(0, 1)
+        simple = QuantumCircuit(5)
+        simple.barrier()
         simple.cx(1, 2)
-        simple.cx(2, 3)
+        simple.barrier()
+        simple.cx(0, 1)
+        simple.cx(3, 4)
 
-        initial_layout = [0, 1, 4, 7]
-
-        return simple, initial_layout
+        return simple
 
     def paper_setting(self):
         # circuit from the paper
@@ -73,15 +76,12 @@ class TestContextAwareDD(QiskitTestCase):
 
         return circuit, initial_layout
 
-    def test_simple(self):
+    def test_full(self):
         """Test full workflow.
 
         TODO check the final circuit has expected structure
         """
-        # backend = FakeHanoiV2()
-        # target = backend.target
         target = self.toy_target
-
         durations = target.durations()
         schedule_analysis = ASAPScheduleAnalysis(durations, target)
         dd = PassManager(
@@ -93,12 +93,18 @@ class TestContextAwareDD(QiskitTestCase):
             ]
         )
 
-        circuit, initial_layout = self.paper_setting()
-        # circuit, initial_layout = self.simple_setting()
+        circuit = self.simple_setting()
         schedule_pm = _get_schedule_pm(target, list(range(target.num_qubits)))
-        # schedule_pm = _get_schedule_pm(target, initial_layout)
-
         pm = schedule_pm + dd
+
+        # ref = QuantumCircuit(5)
+        # ref.barrier()
+
+        # # control-specific sequence
+        # ref.delay()
+        # ref.x(0)
+        # ref.delay()
+        # ref.x(0)
 
         circuit = pm.run(circuit)
         print("\n", circuit.draw(idle_wires=False))
@@ -158,3 +164,17 @@ def _get_schedule_pm(target, initial_layout):
     )
 
     return schedule_pm
+
+
+def apply_delay_sequence(circuit, qubit, timespan, order):
+    if order == 0:
+        circuit.delay(dt, qubit)
+        circuit.x(qubit)
+        circuit.delay(dt, qubit)
+        circuit.x(qubit)
+    elif order == 1:
+        circuit.delay(dt, qubit)
+        circuit.x(qubit)
+        circuit.delay(dt, qubit)
+        circuit.x(qubit)
+        circuit.delay(dt, qubit)
