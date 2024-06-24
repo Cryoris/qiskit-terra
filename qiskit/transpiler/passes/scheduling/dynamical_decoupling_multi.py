@@ -29,6 +29,8 @@ from qiskit.transpiler.exceptions import TranspilerError
 class DynamicalDecouplingMulti(TransformationPass):
     """Dynamical decoupling insertion pass on multi-qubit delays."""
 
+    MAX_ORDER = 5
+
     def __init__(self, target, skip_reset_qubits=True, pulse_alignment=1, skip_threshold=1):
         """Dynamical decoupling initializer.
 
@@ -105,6 +107,12 @@ class DynamicalDecouplingMulti(TransformationPass):
             # 1) color each qubit in this delay instruction
             coloring = self._get_wire_coloring(dag, nd, qubit_index_map, adjacency_map)
 
+            if (max_color := np.max(np(coloring.values()))) > self.MAX_ORDER:
+                raise TranspilerError(
+                    f"Need more colors ({max_color}) than supported ({self.MAX_ORDER}) to find "
+                    "a coloring where no connected qubits share the same color."
+                )
+
             # 2) insert the actual DD sequences
             physical_qubits = [qubit_index_map[q] for q in dag_qubits]
             for physical_qubit, dag_qubit in zip(physical_qubits, dag_qubits):
@@ -120,7 +128,8 @@ class DynamicalDecouplingMulti(TransformationPass):
                     checked_gate_lengths.add(physical_qubit)
 
                 color = coloring[physical_qubit]
-                dd_sequence, spacing = _get_orthogonal_sequence(order=color)
+                spacing = self.get_orthogonal_sequence(order=color)
+                dd_sequence = [XGate() for _ in range(len(spacing) - 1)]
 
                 # check if DD can be applied or if there is not enough time
                 dd_sequence_duration = sum(
@@ -209,22 +218,28 @@ class DynamicalDecouplingMulti(TransformationPass):
 
         return taus
 
+    @staticmethod
+    def get_orthogonal_sequence(order: int) -> list[float]:
+        """Return a DD sequence of given order, where different orders are orthogonal.
 
-def _get_orthogonal_sequence(order: int) -> (list[Gate], list[float]):
-    """Return a DD sequence of given order, where different orders are orthogonal."""
-    if order == 0:
-        dd_sequence = [XGate(), XGate()]
-        spacing = [1 / 2, 1 / 2, 0]
-    elif order == 1:
-        dd_sequence = [XGate(), XGate()]
-        spacing = [1 / 4, 1 / 2, 1 / 4]
-    elif order == 2:
-        dd_sequence = [XGate(), XGate(), XGate(), XGate()]
-        spacing = [1 / 4, 1 / 4, 1 / 4, 1 / 4, 0]
-    else:
-        raise NotImplementedError(f"Order {order} is not implemented.")
+        It would be nice to generate this with a function instead of hardcoding it.
+        """
+        if order == 0:
+            spacing = [1 / 2, 1 / 2, 0]
+        elif order == 1:
+            spacing = [1 / 4, 1 / 2, 1 / 4]
+        elif order == 2:
+            spacing = [1 / 4, 1 / 4, 1 / 4, 1 / 4, 0]
+        elif order == 3:
+            spacing = [1 / 8, 1 / 4, 1 / 4, 1 / 4, 1 / 8]
+        elif order == 4:
+            spacing = [1 / 8, 1 / 4, 1 / 8, 1 / 8, 1 / 4, 1 / 8, 0]
+        elif order == 5:
+            spacing = [1 / 8, 1 / 8, 1 / 8, 1 / 4, 1 / 8, 1 / 8, 1 / 8]
+        else:
+            raise NotImplementedError(f"Order {order} (and higher) is not yet implemented.")
 
-    return dd_sequence, spacing
+        return spacing
 
 
 def _validate_dd_sequence(dd_sequence: list[Gate]) -> float:

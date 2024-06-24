@@ -1,5 +1,6 @@
 from ddt import ddt, data
 import math
+import itertools
 import numpy as np
 from qiskit.circuit import QuantumCircuit, Delay
 from qiskit.circuit.library import SXGate, CXGate, XGate, CZGate, ECRGate
@@ -32,7 +33,7 @@ class TestContextAwareDD(QiskitTestCase):
         num_qubits = 5
 
         # gate times in terms of dt
-        dt = 1e-9
+        self.dt = 1e-9
         self.t_cx = 1e3
         self.t_sx = 10
         self.t_x = 20
@@ -45,15 +46,15 @@ class TestContextAwareDD(QiskitTestCase):
         linear_topo += [tuple(reversed(connection)) for connection in linear_topo]
         # CX, SX and X gate durations (somewhat sensible durations and errors chosen)
         cx_props = {
-            connection: InstructionProperties(duration=self.t_cx * dt, error=1e-2)
+            connection: InstructionProperties(duration=self.t_cx * self.dt, error=1e-2)
             for connection in linear_topo
         }
         sx_props = {
-            (i,): InstructionProperties(duration=self.t_sx * dt, error=1e-4)
+            (i,): InstructionProperties(duration=self.t_sx * self.dt, error=1e-4)
             for i in range(num_qubits)
         }
         x_props = {
-            (i,): InstructionProperties(duration=self.t_x * dt, error=1e-4)
+            (i,): InstructionProperties(duration=self.t_x * self.dt, error=1e-4)
             for i in range(num_qubits)
         }
         target.add_instruction(CXGate(), cx_props)
@@ -331,6 +332,65 @@ class TestContextAwareDD(QiskitTestCase):
         with self.assertRaises(TranspilerError):
             _ = pm.run(circuit)
 
+    def test_orthogonal_sequences(self):
+        """Check orthogonality of sequences up to the supported order."""
+
+        # get the DD sequences and check for the smallest time frame
+        dd_sequences = [
+            np.asarray(DynamicalDecouplingMulti.get_orthogonal_sequence(order))
+            for order in range(DynamicalDecouplingMulti.MAX_ORDER + 1)
+        ]
+        # we must exclude 0, which is sometimes used as padding in the end
+        smallest_unit = np.min([np.min(row[np.where(row > 0)]) for row in dd_sequences])
+
+        # expand the DD times to vectors with an entry +1 if the qubit is in + state
+        # and a -1 if the qubit is in - state
+        sign_vectors = [expand_dd_sequence(sequence, smallest_unit) for sequence in dd_sequences]
+
+        # check pairwise orthogonality
+        for i, row_i in enumerate(sign_vectors):
+            for j, row_j in enumerate(sign_vectors[i + 1 :]):
+                with self.subTest(i=i, j=j):
+                    self.assertAlmostEqual(np.dot(row_i, row_j), 0)
+
+    def test_exceed_highest_order(self):
+        """Check an error is raised if we query a sequence with order too high."""
+
+        order_threshold = 7  # this is the order not supported anymore
+        kranka = Target(num_qubits=order_threshold, dt=self.dt)  # a target with insane connectivity
+        coupling_web = itertools.combinations(list(range(order_threshold)), 2)
+        cx_props = {
+            connection: InstructionProperties(duration=self.t_cx * self.dt, error=1e-2)
+            for connection in coupling_web
+        }
+        x_props = {
+            (i,): InstructionProperties(duration=self.t_x * self.dt, error=1e-4)
+            for i in range(kranka.num_qubits)
+        }
+        kranka.add_instruction(CXGate(), cx_props)
+        kranka.add_instruction(XGate(), x_props)
+        kranka.add_instruction(Delay(1), x_props)
+
+        circuit = QuantumCircuit(order_threshold)
+        circuit.x(circuit.qubits)
+        circuit.barrier()
+        circuit.delay(1000)  # note this should be long enough to fit the DD sequences
+
+        schedule_analysis = ALAPScheduleAnalysis(kranka.durations(), kranka)
+        dd = PassManager(
+            [
+                CombineAdjacentDelays(kranka),
+                schedule_analysis,  # should not be necessary!
+                DynamicalDecouplingMulti(kranka, skip_reset_qubits=False),
+                schedule_analysis,  # should not be necessary!
+            ]
+        )
+        schedule_pm = _get_schedule_pm(kranka, list(range(kranka.num_qubits)))
+        pm = schedule_pm + dd
+
+        with self.assertRaises(TranspilerError):
+            _ = pm.run(circuit)
+
 
 class TestMultiDD(QiskitTestCase):
     """Test coloring and insertion of DD sequences given a circuit with Delays."""
@@ -379,3 +439,19 @@ def apply_delay_sequence(circuit, qubit, timespan, durations, order):
             circuit.x(qubit)
 
     return circuit
+
+
+def expand_dd_sequence(sequence, unit):
+    """Expand durations in terms of the unit.
+
+    E.g. in the unit is 1/8 and sequence is [1/4, 1/2, 1/4] expand to [++----++].
+    """
+    signs = []
+    sign = 1
+
+    for timespan in sequence:
+        num_items = int(timespan / unit)
+        signs += num_items * [sign]
+        sign *= -1
+
+    return signs
