@@ -22,7 +22,7 @@ from .alignments import InstructionDurationCheck, ValidatePulseGates, Constraine
 from .combine_adjacent_delays import CombineAdjacentDelays
 from .dynamical_decoupling_multi import DynamicalDecouplingMulti
 
-# For backward compability
+# For backward compatibility
 from . import alignments as instruction_alignments
 
 # TODO Deprecated pass. Will be removed after deprecation period.

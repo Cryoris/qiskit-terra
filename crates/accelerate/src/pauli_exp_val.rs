@@ -32,7 +32,7 @@ pub fn fast_sum_with_simd<S: Simd>(simd: S, values: &[f64]) -> f64 {
     sum + tail.iter().sum::<f64>()
 }
 
-/// Compute the pauli expectatation value of a statevector without x
+/// Compute the pauli expectation value of a statevector without x
 #[pyfunction]
 #[pyo3(text_signature = "(data, num_qubits, z_mask, /)")]
 pub fn expval_pauli_no_x(
@@ -63,7 +63,7 @@ pub fn expval_pauli_no_x(
     }
 }
 
-/// Compute the pauli expectatation value of a statevector with x
+/// Compute the pauli expectation value of a statevector with x
 #[pyfunction]
 #[pyo3(text_signature = "(data, num_qubits, z_mask, x_mask, phase, x_max, /)")]
 pub fn expval_pauli_with_x(
@@ -121,7 +121,7 @@ pub fn expval_pauli_with_x(
     }
 }
 
-/// Compute the pauli expectatation value of a density matrix without x
+/// Compute the pauli expectation value of a density matrix without x
 #[pyfunction]
 #[pyo3(text_signature = "(data, num_qubits, z_mask, /)")]
 pub fn density_expval_pauli_no_x(
@@ -153,7 +153,7 @@ pub fn density_expval_pauli_no_x(
     }
 }
 
-/// Compute the pauli expectatation value of a density matrix with x
+/// Compute the pauli expectation value of a density matrix with x
 #[pyfunction]
 #[pyo3(text_signature = "(data, num_qubits, z_mask, x_mask, phase, x_max, /)")]
 pub fn density_expval_pauli_with_x(
@@ -193,7 +193,7 @@ pub fn density_expval_pauli_with_x(
 }
 
 #[pymodule]
-pub fn pauli_expval(_py: Python, m: &PyModule) -> PyResult<()> {
+pub fn pauli_expval(m: &Bound<PyModule>) -> PyResult<()> {
     m.add_wrapped(wrap_pyfunction!(expval_pauli_no_x))?;
     m.add_wrapped(wrap_pyfunction!(expval_pauli_with_x))?;
     m.add_wrapped(wrap_pyfunction!(density_expval_pauli_with_x))?;
