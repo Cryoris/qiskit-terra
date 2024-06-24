@@ -78,6 +78,10 @@ class DynamicalDecouplingMulti(TransformationPass):
         adjacency_map.make_symmetric()  # don't care for direction
         qubit_index_map = {qubit: index for index, qubit in enumerate(new_dag.qubits)}
 
+        # keep track of which qubits we checked for correct X gate pulse length (which
+        # need to be an integer multiple of the pulse alignment)
+        checked_gate_lengths = set()
+
         # TODO why not change the DAG inplace?
         for nd in dag.topological_op_nodes():
             if not isinstance(nd.op, Delay):
@@ -104,6 +108,17 @@ class DynamicalDecouplingMulti(TransformationPass):
             # 2) insert the actual DD sequences
             physical_qubits = [qubit_index_map[q] for q in dag_qubits]
             for physical_qubit, dag_qubit in zip(physical_qubits, dag_qubits):
+
+                # check the X gate on the active qubit is compatible with pulse alignment
+                if physical_qubit not in checked_gate_lengths:
+                    x_duration = self._target.durations().get("x", physical_qubit)
+                    if x_duration % self._alignment != 0:
+                        raise TranspilerError(
+                            f"X gate length on qubit {dag_qubit} is {x_duration} which is not "
+                            f"an integer multiple of the pulse alignment {self._alignment}."
+                        )
+                    checked_gate_lengths.add(physical_qubit)
+
                 color = coloring[physical_qubit]
                 dd_sequence, spacing = _get_orthogonal_sequence(order=color)
 
