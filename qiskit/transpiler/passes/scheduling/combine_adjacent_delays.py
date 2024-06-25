@@ -340,6 +340,7 @@ class CombineAdjacentDelays(TransformationPass):
             placeholder_delay_nodes = [
                 out_node_map[node_id] for node_id in placeholder_delay_node_ids
             ]
+            self.property_set["node_start_time"].pop(doomed_delay_node)
 
             for replacement, placeholder_delay_node in zip(replacements, placeholder_delay_nodes):
                 replacement_delay_to_placeholder_map[id(replacement.new_delay_op)].append(
@@ -348,12 +349,13 @@ class CombineAdjacentDelays(TransformationPass):
 
         for replacement in replacement_delays:
             placeholder_nodes = replacement_delay_to_placeholder_map[id(replacement.new_delay_op)]
-            dag.replace_block_with_op(
+            new_node = dag.replace_block_with_op(
                 placeholder_nodes,
                 replacement.new_delay_op,
                 {node.qargs[0]: idx for idx, node in enumerate(placeholder_nodes)},
                 cycle_check=True,
             )
+            self.property_set["node_start_time"][new_node] = replacement.start_time
 
         for delay_node in dag.named_nodes("delay"):
             if delay_node.op.num_qubits == 1:

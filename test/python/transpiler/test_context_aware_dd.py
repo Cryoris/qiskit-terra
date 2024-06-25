@@ -95,11 +95,9 @@ class TestContextAwareDD(QiskitTestCase):
         """Test the full workflow on a simple circuit and a concrete reference."""
         target = self.toy_target
         durations = target.durations()
-        schedule_analysis = ASAPScheduleAnalysis(durations, target)
         dd = PassManager(
             [
                 CombineAdjacentDelays(target),
-                schedule_analysis,  # should not be necessary!
                 DynamicalDecouplingMulti(target),
             ]
         )
@@ -128,7 +126,6 @@ class TestContextAwareDD(QiskitTestCase):
         """Test combination on an explicit circuit."""
         target = self.toy_target
         layout = list(range(5))
-        durations = target.durations()
         dd = PassManager(
             [
                 CombineAdjacentDelays(target),
@@ -158,11 +155,9 @@ class TestContextAwareDD(QiskitTestCase):
         circuit.cx(1, 2)
 
         target = self.toy_target
-        schedule_analysis = ALAPScheduleAnalysis(target.durations(), target)
         dd = PassManager(
             [
                 CombineAdjacentDelays(target),
-                schedule_analysis,  # should not be necessary!
                 DynamicalDecouplingMulti(target, skip_reset_qubits=skip_initial),
             ]
         )
@@ -195,11 +190,9 @@ class TestContextAwareDD(QiskitTestCase):
 
         """
         target = self.toy_target
-        schedule_analysis = ALAPScheduleAnalysis(target.durations(), target)
         dd = PassManager(
             [
                 CombineAdjacentDelays(target),
-                schedule_analysis,  # should not be necessary!
                 DynamicalDecouplingMulti(target),
             ]
         )
@@ -269,7 +262,6 @@ class TestContextAwareDD(QiskitTestCase):
             circuit.delay(delay, 0)
             circuit.sx(0)
 
-            print(circuit.draw())
             circuit = pm.run(circuit)
 
             with self.subTest(exceed_threshold=exceed_threshold):
@@ -306,13 +298,11 @@ class TestContextAwareDD(QiskitTestCase):
     def test_invalid_pulse_alignment(self):
         """Test an error is raised if the X gate length is not compatible with the pulse alignment."""
         target = self.toy_target
-        schedule_analysis = ALAPScheduleAnalysis(target.durations(), target)
         dd = PassManager(
             [
                 DynamicalDecouplingMulti(
                     target, pulse_alignment=self.t_x + 1, skip_reset_qubits=False
                 ),
-                # schedule_analysis,  # should not be necessary!
             ]
         )
         schedule_pm = _get_schedule_pm(target, [0])
@@ -368,11 +358,9 @@ class TestContextAwareDD(QiskitTestCase):
         circuit.barrier()
         circuit.delay(1000)  # note this should be long enough to fit the DD sequences
 
-        schedule_analysis = ALAPScheduleAnalysis(kranka.durations(), kranka)
         dd = PassManager(
             [
                 CombineAdjacentDelays(kranka),
-                schedule_analysis,  # should not be necessary!
                 DynamicalDecouplingMulti(kranka, skip_reset_qubits=False),
             ]
         )
