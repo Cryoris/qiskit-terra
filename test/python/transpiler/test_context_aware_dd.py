@@ -101,7 +101,6 @@ class TestContextAwareDD(QiskitTestCase):
                 CombineAdjacentDelays(target),
                 schedule_analysis,  # should not be necessary!
                 DynamicalDecouplingMulti(target),
-                schedule_analysis,  # should not be necessary!
             ]
         )
 
@@ -130,11 +129,9 @@ class TestContextAwareDD(QiskitTestCase):
         target = self.toy_target
         layout = list(range(5))
         durations = target.durations()
-        schedule_analysis = ALAPScheduleAnalysis(durations, target)
         dd = PassManager(
             [
                 CombineAdjacentDelays(target),
-                schedule_analysis,  # should not be necessary!
             ]
         )
         circuit = self.simple_setting()
@@ -167,7 +164,6 @@ class TestContextAwareDD(QiskitTestCase):
                 CombineAdjacentDelays(target),
                 schedule_analysis,  # should not be necessary!
                 DynamicalDecouplingMulti(target, skip_reset_qubits=skip_initial),
-                schedule_analysis,  # should not be necessary!
             ]
         )
         schedule_pm = _get_schedule_pm(target, list(range(circuit.num_qubits)))
@@ -205,7 +201,6 @@ class TestContextAwareDD(QiskitTestCase):
                 CombineAdjacentDelays(target),
                 schedule_analysis,  # should not be necessary!
                 DynamicalDecouplingMulti(target),
-                schedule_analysis,  # should not be necessary!
             ]
         )
         schedule_pm = _get_schedule_pm(target, list(range(5)))
@@ -252,11 +247,9 @@ class TestContextAwareDD(QiskitTestCase):
         skip_threshold = 0.6  # arbitrary threshold below 1
 
         target = self.toy_target
-        schedule_analysis = ALAPScheduleAnalysis(target.durations(), target)
         dd = PassManager(
             [
                 DynamicalDecouplingMulti(target, skip_threshold=skip_threshold),
-                schedule_analysis,  # should not be necessary!
             ]
         )
         schedule_pm = _get_schedule_pm(target, [0])
@@ -276,6 +269,7 @@ class TestContextAwareDD(QiskitTestCase):
             circuit.delay(delay, 0)
             circuit.sx(0)
 
+            print(circuit.draw())
             circuit = pm.run(circuit)
 
             with self.subTest(exceed_threshold=exceed_threshold):
@@ -289,13 +283,11 @@ class TestContextAwareDD(QiskitTestCase):
         Pulses should only start at integer multiples of the allowed pulse alignment.
         """
         target = self.toy_target
-        schedule_analysis = ALAPScheduleAnalysis(target.durations(), target)
         dd = PassManager(
             [
                 DynamicalDecouplingMulti(
                     target, pulse_alignment=alignment, skip_reset_qubits=False
                 ),
-                schedule_analysis,  # should not be necessary!
             ]
         )
         schedule_pm = _get_schedule_pm(target, [0])
@@ -320,7 +312,7 @@ class TestContextAwareDD(QiskitTestCase):
                 DynamicalDecouplingMulti(
                     target, pulse_alignment=self.t_x + 1, skip_reset_qubits=False
                 ),
-                schedule_analysis,  # should not be necessary!
+                # schedule_analysis,  # should not be necessary!
             ]
         )
         schedule_pm = _get_schedule_pm(target, [0])
@@ -382,7 +374,6 @@ class TestContextAwareDD(QiskitTestCase):
                 CombineAdjacentDelays(kranka),
                 schedule_analysis,  # should not be necessary!
                 DynamicalDecouplingMulti(kranka, skip_reset_qubits=False),
-                schedule_analysis,  # should not be necessary!
             ]
         )
         schedule_pm = _get_schedule_pm(kranka, list(range(kranka.num_qubits)))
@@ -390,16 +381,6 @@ class TestContextAwareDD(QiskitTestCase):
 
         with self.assertRaises(TranspilerError):
             _ = pm.run(circuit)
-
-
-class TestMultiDD(QiskitTestCase):
-    """Test coloring and insertion of DD sequences given a circuit with Delays."""
-
-    def setUp(self):
-        super().setUp()
-
-    def test_wire_coloring(self):
-        pass
 
 
 def _get_schedule_pm(target, initial_layout):

@@ -6,7 +6,7 @@ from collections import defaultdict, Counter
 
 from typing import List, Set
 
-from qiskit.circuit import Delay, QuantumCircuit, Qubit
+from qiskit.circuit import Delay, QuantumCircuit, Qubit, Instruction
 from qiskit.dagcircuit import DAGCircuit
 from qiskit.converters import circuit_to_dag
 from qiskit.dagcircuit import DAGOpNode
@@ -160,10 +160,28 @@ class CollectedJointDelay:
         )
 
 
+class MultiDelay(Instruction):
+    """A multi-qubit delay instruction."""
+
+    def __init__(self, num_qubits: int, duration: int) -> None:
+        """
+        Args:
+            num_qubits: The number of qubits the delay acts on.
+            duration: The delay duration in terms of the target's ``dt``.
+        """
+        super().__init__("multi_delay", num_qubits, 0, [], duration=duration)
+
+    def _define(self) -> None:
+        # This could be defined in terms of Delay instructions, but we are only
+        # using this as placeholder for the DynamicalDecouplingMulti pass, so it should
+        # never be unrolled.
+        return None
+
+
 # TODO: what is this?
 @dataclass
 class ReplacementDelay:
-    new_delay_op: Delay
+    new_delay_op: Delay | MultiDelay
     start_time: int
     end_time: int
     replacing_delay_nodes: List[
@@ -279,9 +297,11 @@ class CombineAdjacentDelays(TransformationPass):
             end_time = widest.end_delay_event.time
 
             replacement = ReplacementDelay(
-                Delay(end_time - start_time), start_time, end_time, widest.open_op_nodes
+                MultiDelay(widest.num_qubits, end_time - start_time),
+                start_time,
+                end_time,
+                widest.open_op_nodes,
             )
-            replacement.new_delay_op.num_qubits = widest.num_qubits
 
             replacement_delays.append(replacement)
 

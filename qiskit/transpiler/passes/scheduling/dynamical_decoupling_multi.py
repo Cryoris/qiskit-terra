@@ -25,6 +25,8 @@ from qiskit.quantum_info.operators.predicates import matrix_equal
 from qiskit.transpiler.basepasses import TransformationPass
 from qiskit.transpiler.exceptions import TranspilerError
 
+from .combine_adjacent_delays import MultiDelay
+
 
 class DynamicalDecouplingMulti(TransformationPass):
     """Dynamical decoupling insertion pass on multi-qubit delays."""
@@ -75,6 +77,8 @@ class DynamicalDecouplingMulti(TransformationPass):
             raise TranspilerError("DD runs after circuit is scheduled.")
 
         new_dag = dag.copy_empty_like()
+        node_start_times = self.property_set["node_start_time"].copy()
+        self.property_set["node_start_time"].clear()
 
         adjacency_map = self._target.build_coupling_map()
         adjacency_map.make_symmetric()  # don't care for direction
@@ -86,30 +90,33 @@ class DynamicalDecouplingMulti(TransformationPass):
 
         # TODO why not change the DAG inplace?
         for nd in dag.topological_op_nodes():
-            if not isinstance(nd.op, Delay):
-                new_dag.apply_operation_back(nd.op, nd.qargs, nd.cargs)
+            if not isinstance(nd.op, (Delay, MultiDelay)):
+                new_node = new_dag.apply_operation_back(nd.op, nd.qargs, nd.cargs)
+                self.property_set["node_start_time"][new_node] = node_start_times[nd]
                 continue
 
             dag_qubits = nd.qargs
 
-            # initial qubit delays are left unchanged, i.e., left as delays without
-            # inserting a decoupling sequence
+            # Initial qubit delays are left unchanged, i.e., left as delays without
+            # inserting a decoupling sequence. Note that node start times must be updated
+            # to the new gates
+            start_time = node_start_times.get(nd)
             if self._skip_reset_qubits:
                 pred = next(dag.predecessors(nd))
                 if isinstance(pred, DAGInNode) or isinstance(pred.op, Reset):
                     for q in dag_qubits:
-                        new_dag.apply_operation_back(Delay(nd.op.duration), [q], [])
+                        new_node = new_dag.apply_operation_back(Delay(nd.op.duration), [q], [])
+                        self.property_set["node_start_time"][new_node] = start_time
                     continue
 
-            start_time = self.property_set["node_start_time"][nd]
-            end_time = start_time + nd.op.duration
-
             # 1) color each qubit in this delay instruction
-            coloring = self._get_wire_coloring(dag, nd, qubit_index_map, adjacency_map)
+            coloring = self._get_wire_coloring(
+                dag, nd, qubit_index_map, adjacency_map, node_start_times
+            )
 
-            if (max_color := np.max(np(coloring.values()))) > self.MAX_ORDER:
+            if (max_order := _get_max_order(coloring)) > self.MAX_ORDER:
                 raise TranspilerError(
-                    f"Need more colors ({max_color}) than supported ({self.MAX_ORDER}) to find "
+                    f"Need more colors ({max_order}) than supported ({self.MAX_ORDER}) to find "
                     "a coloring where no connected qubits share the same color."
                 )
 
@@ -138,7 +145,8 @@ class DynamicalDecouplingMulti(TransformationPass):
                 slack = nd.op.duration - dd_sequence_duration
                 slack_fraction = slack / nd.op.duration
                 if 1 - slack_fraction >= self._skip_threshold:  # dd doesn't fit
-                    new_dag.apply_operation_back(Delay(nd.op.duration), [dag_qubit], [])
+                    new_node = new_dag.apply_operation_back(Delay(nd.op.duration), [dag_qubit], [])
+                    self.property_set["node_start_time"][new_node] = start_time
                     continue
 
                 # compute actual spacings in between the delays, taking into account
@@ -150,17 +158,23 @@ class DynamicalDecouplingMulti(TransformationPass):
 
                 # apply the DD gates
                 # tau has one more entry than the gate sequence
+                qubit_start_time = start_time
                 for tau, gate in itertools.zip_longest(taus, dd_sequence):
                     if tau > 0:
-                        new_dag.apply_operation_back(Delay(tau), [dag_qubit])
+                        new_node = new_dag.apply_operation_back(Delay(tau), [dag_qubit])
+                        self.property_set["node_start_time"][new_node] = qubit_start_time
+                        qubit_start_time += tau
                     if gate is not None:
-                        new_dag.apply_operation_back(gate, [dag_qubit])
+                        new_node = new_dag.apply_operation_back(gate, [dag_qubit])
+                        self.property_set["node_start_time"][new_node] = qubit_start_time
+                        qubit_start_time += self._target.durations().get(gate, physical_qubit)
+
                 new_dag.global_phase = _mod_2pi(new_dag.global_phase + sequence_gphase)
 
         return new_dag
 
-    def _get_wire_coloring(self, dag, delay_node, qubit_index_map, adjacency_map):
-        start_time = self.property_set["node_start_time"][delay_node]
+    def _get_wire_coloring(self, dag, delay_node, qubit_index_map, adjacency_map, node_start_times):
+        start_time = node_start_times[delay_node]
         end_time = start_time + delay_node.op.duration
         dag_qubits = delay_node.qargs
         physical_qubits = [qubit_index_map[q] for q in dag_qubits]
@@ -175,7 +189,7 @@ class DynamicalDecouplingMulti(TransformationPass):
             dag_q = dag.qubits[q]
             for q_node in dag.nodes_on_wire(dag_q, only_ops=True):
                 # check if the operation occurs during the delay
-                adj_start_time = self.property_set["node_start_time"][q_node]
+                adj_start_time = node_start_times[q_node]
                 adj_end_time = adj_start_time + q_node.op.duration
                 if (
                     adj_start_time < end_time
@@ -240,6 +254,16 @@ class DynamicalDecouplingMulti(TransformationPass):
             raise NotImplementedError(f"Order {order} (and higher) is not yet implemented.")
 
         return spacing
+
+
+def _get_max_order(coloring: dict[int, int | None]) -> int:
+    def handle_getting_none(key):
+        if (value := coloring.get(key)) is None:
+            # return -1 if wire has no color (which is certainly smaller than the lowest order, 0)
+            return -1
+        return value
+
+    return max(coloring, key=handle_getting_none)
 
 
 def _validate_dd_sequence(dd_sequence: list[Gate]) -> float:
