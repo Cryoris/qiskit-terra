@@ -12,6 +12,8 @@
 
 """Dynamical Decoupling insertion pass on multiple qubits."""
 
+
+from __future__ import annotations
 import itertools
 
 import numpy as np
@@ -204,7 +206,7 @@ class DynamicalDecouplingMulti(TransformationPass):
                         coloring[q] = 1
 
         # now color delay qubits, subject to previous colors and keeping to as few colors as possible
-        for physical_qubit, dag_qubit in zip(physical_qubits, dag_qubits):
+        for physical_qubit in physical_qubits:
             if coloring[physical_qubit] is None:
                 adjacent_colors = set(
                     coloring[neighbor]
@@ -263,7 +265,8 @@ def _get_max_order(coloring: dict[int, int | None]) -> int:
             return -1
         return value
 
-    return max(coloring, key=handle_getting_none)
+    max_key = max(coloring, key=handle_getting_none)
+    return coloring[max_key]
 
 
 def _validate_dd_sequence(dd_sequence: list[Gate]) -> float:
