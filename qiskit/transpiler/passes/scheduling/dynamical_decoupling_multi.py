@@ -21,7 +21,7 @@ import numpy as np
 from qiskit.circuit.delay import Delay
 from qiskit.circuit.reset import Reset
 from qiskit.circuit import Gate
-from qiskit.circuit.library.standard_gates import IGate, XGate, CXGate, ECRGate
+from qiskit.circuit.library.standard_gates import XGate, CXGate, ECRGate
 from qiskit.dagcircuit import DAGInNode
 from qiskit.quantum_info.operators.predicates import matrix_equal
 from qiskit.transpiler.basepasses import TransformationPass
@@ -181,7 +181,7 @@ class DynamicalDecouplingMulti(TransformationPass):
         dag_qubits = delay_node.qargs
         physical_qubits = [qubit_index_map[q] for q in dag_qubits]
         neighborhood = set(
-            [neighbor for q in physical_qubits for neighbor in adjacency_map.neighbors(q)]
+            neighbor for q in physical_qubits for neighbor in adjacency_map.neighbors(q)
         )
         neighborhood |= set(physical_qubits)
         coloring = {q: None for q in neighborhood}
@@ -275,16 +275,18 @@ def _validate_dd_sequence(dd_sequence: list[Gate]) -> float:
     if num_pulses != 1:
         if num_pulses % 2 != 0:
             raise TranspilerError("DD sequence must contain an even number of gates (or 1).")
-        noop = np.eye(2)
-        for gate in dd_sequence:
-            noop = noop.dot(gate.to_matrix())
-        if not matrix_equal(noop, IGate().to_matrix(), ignore_phase=True):
-            raise TranspilerError("The DD sequence does not make an identity operation.")
-        return np.angle(noop[0][0])
+
+    # compute the action of the DD sequence
+    op = np.eye(2)
+    for gate in dd_sequence:
+        op = op.dot(gate.to_matrix())
+    if not matrix_equal(op, np.eye(2), ignore_phase=True):
+        raise TranspilerError("The DD sequence does not make an identity operation.")
+    return np.angle(op[0][0])
 
 
 def _mod_2pi(angle: float, atol: float = 0):
-    """Wrap angle into interval [-π,π). If within atol of the endpoint, clamp to -π"""
+    """Wrap angle into interval [-π,π). If within atol of the endpoint, clamp to -π."""
     wrapped = (angle + np.pi) % (2 * np.pi) - np.pi
     if abs(wrapped - np.pi) < atol:
         wrapped = -np.pi

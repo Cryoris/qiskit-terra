@@ -1,7 +1,22 @@
-from ddt import ddt, data
+# This code is part of Qiskit.
+#
+# (C) Copyright IBM 2022.
+#
+# This code is licensed under the Apache License, Version 2.0. You may
+# obtain a copy of this license in the LICENSE.txt file in the root directory
+# of this source tree or at http://www.apache.org/licenses/LICENSE-2.0.
+#
+# Any modifications or derivative works of this code must retain this
+# copyright notice, and modified files need to carry a notice indicating
+# that they have been altered from the originals.
+
+"""Tests for the context-aware dynamical decoupling passes."""
+
 import math
 import itertools
+from ddt import ddt, data
 import numpy as np
+
 from qiskit.circuit import QuantumCircuit, Delay
 from qiskit.circuit.library import SXGate, CXGate, XGate, CZGate, ECRGate
 from qiskit.transpiler import PassManager, Target, InstructionProperties
@@ -13,12 +28,9 @@ from qiskit.transpiler.passes import (
     CombineAdjacentDelays,
     DynamicalDecouplingMulti,
     ALAPScheduleAnalysis,
-    ASAPScheduleAnalysis,
     ApplyLayout,
     PadDelay,
 )
-
-from qiskit_ibm_runtime.fake_provider import FakeHanoiV2
 
 
 from test import QiskitTestCase  # pylint: disable=wrong-import-order
@@ -67,6 +79,7 @@ class TestContextAwareDD(QiskitTestCase):
         self.toy_target = target
 
     def simple_setting(self):
+        """Get a simple circuit with 2 CX layers for testing."""
         simple = QuantumCircuit(5)
         simple.sx(simple.qubits)
         simple.barrier()
@@ -78,7 +91,7 @@ class TestContextAwareDD(QiskitTestCase):
         return simple
 
     def paper_setting(self):
-        # circuit from the paper
+        """Get the circuit from Fig. 5 of the context-aware DD paper."""
         circuit = QuantumCircuit(6)
         circuit.barrier()
         circuit.cx(1, 0)
@@ -121,19 +134,6 @@ class TestContextAwareDD(QiskitTestCase):
 
         circuit = pm.run(circuit)
         self.assertEqual(circuit, ref)
-
-    def test_simple_combination(self):
-        """Test combination on an explicit circuit."""
-        target = self.toy_target
-        layout = list(range(5))
-        dd = PassManager(
-            [
-                CombineAdjacentDelays(target),
-            ]
-        )
-        circuit = self.simple_setting()
-        schedule_pm = _get_schedule_pm(target, layout)
-        pm = schedule_pm + dd
 
     @data(True, False)
     def test_skip_initial_delays(self, skip_initial):
@@ -338,7 +338,7 @@ class TestContextAwareDD(QiskitTestCase):
     def test_exceed_highest_order(self):
         """Check an error is raised if we query a sequence with order too high."""
 
-        order_threshold = 7  # this is the order not supported anymore
+        order_threshold = 7  # pick an order that is not supported anymore
         kranka = Target(num_qubits=order_threshold, dt=self.dt)  # a target with insane connectivity
         coupling_web = itertools.combinations(list(range(order_threshold)), 2)
         cx_props = {
@@ -389,6 +389,7 @@ def _get_schedule_pm(target, initial_layout):
 
 
 def apply_delay_sequence(circuit, qubit, timespan, durations, order):
+    """Tool to apply a delay sequence to a circuit."""
     if order == 0:
         dt = (timespan - 2 * durations.get("x", qubit)) / 2
         for _ in range(2):
