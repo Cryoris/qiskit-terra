@@ -10,6 +10,7 @@
 // copyright notice, and modified files need to carry a notice indicating
 // that they have been altered from the originals.
 
+pub mod bit_data;
 pub mod circuit_data;
 pub mod circuit_instruction;
 pub mod dag_node;
@@ -17,22 +18,12 @@ pub mod gate_matrix;
 pub mod imports;
 pub mod operations;
 pub mod parameter_table;
+pub mod slice;
+pub mod util;
 
-mod bit_data;
 mod interner;
 
 use pyo3::prelude::*;
-use pyo3::types::PySlice;
-
-/// A private enumeration type used to extract arguments to pymethod
-/// that may be either an index or a slice
-#[derive(FromPyObject)]
-pub enum SliceOrInt<'a> {
-    // The order here defines the order the variants are tried in the FromPyObject` derivation.
-    // `Int` is _much_ more common, so that should be first.
-    Int(isize),
-    Slice(Bound<'a, PySlice>),
-}
 
 pub type BitType = u32;
 #[derive(Copy, Clone, Debug, Hash, Ord, PartialOrd, Eq, PartialEq)]

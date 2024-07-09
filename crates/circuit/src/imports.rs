@@ -71,6 +71,11 @@ pub static SINGLETON_GATE: ImportOnceCell =
     ImportOnceCell::new("qiskit.circuit.singleton", "SingletonGate");
 pub static SINGLETON_CONTROLLED_GATE: ImportOnceCell =
     ImportOnceCell::new("qiskit.circuit.singleton", "SingletonControlledGate");
+pub static CONTROLLED_GATE: ImportOnceCell =
+    ImportOnceCell::new("qiskit.circuit", "ControlledGate");
+pub static DEEPCOPY: ImportOnceCell = ImportOnceCell::new("copy", "deepcopy");
+pub static QI_OPERATOR: ImportOnceCell = ImportOnceCell::new("qiskit.quantum_info", "Operator");
+pub static WARNINGS_WARN: ImportOnceCell = ImportOnceCell::new("warnings", "warn");
 
 /// A mapping from the enum variant in crate::operations::StandardGate to the python
 /// module path and class name to import it. This is used to populate the conversion table
@@ -79,6 +84,7 @@ pub static SINGLETON_CONTROLLED_GATE: ImportOnceCell =
 ///
 /// NOTE: the order here is significant, the StandardGate variant's number must match
 /// index of it's entry in this table. This is all done statically for performance
+// TODO: replace placeholders with actual implementation
 static STDGATE_IMPORT_PATHS: [[&str; 2]; STANDARD_GATE_SIZE] = [
     // ZGate = 0
     ["qiskit.circuit.library.standard_gates.z", "ZGate"],
@@ -131,16 +137,70 @@ static STDGATE_IMPORT_PATHS: [[&str; 2]; STANDARD_GATE_SIZE] = [
     ["qiskit.circuit.library.standard_gates.sx", "SXdgGate"],
     // iSWAPGate = 23
     ["qiskit.circuit.library.standard_gates.iswap", "iSwapGate"],
-    //XXMinusYYGate = 24
+    // XXMinusYYGate = 24
     [
         "qiskit.circuit.library.standard_gates.xx_minus_yy",
         "XXMinusYYGate",
     ],
-    //XXPlusYYGate = 25
+    // XXPlusYYGate = 25
     [
         "qiskit.circuit.library.standard_gates.xx_plus_yy",
         "XXPlusYYGate",
     ],
+    // U1Gate = 26
+    ["qiskit.circuit.library.standard_gates.u1", "U1Gate"],
+    // U2Gate = 27
+    ["qiskit.circuit.library.standard_gates.u2", "U2Gate"],
+    // U3Gate = 28
+    ["qiskit.circuit.library.standard_gates.u3", "U3Gate"],
+    // CRXGate = 29
+    ["qiskit.circuit.library.standard_gates.rx", "CRXGate"],
+    // CRYGate = 30
+    ["qiskit.circuit.library.standard_gates.ry", "CRYGate"],
+    // CRZGate = 31
+    ["qiskit.circuit.library.standard_gates.rz", "CRZGate"],
+    // RGate 32
+    ["qiskit.circuit.library.standard_gates.r", "RGate"],
+    // CHGate = 33
+    ["qiskit.circuit.library.standard_gates.h", "CHGate"],
+    // CPhaseGate = 34
+    ["qiskit.circuit.library.standard_gates.p", "CPhaseGate"],
+    // CSGate = 35
+    ["qiskit.circuit.library.standard_gates.s", "CSGate"],
+    // CSdgGate = 36
+    ["qiskit.circuit.library.standard_gates.s", "CSdgGate"],
+    // CSXGate = 37
+    ["qiskit.circuit.library.standard_gates.sx", "CSXGate"],
+    // CSwapGate = 38
+    ["qiskit.circuit.library.standard_gates.swap", "CSwapGate"],
+    // CUGate = 39
+    ["qiskit.circuit.library.standard_gates.u", "CUGate"],
+    // CU1Gate = 40
+    ["qiskit.circuit.library.standard_gates.u1", "CU1Gate"],
+    // CU3Gate = 41
+    ["qiskit.circuit.library.standard_gates.u3", "CU3Gate"],
+    // C3XGate = 42
+    ["qiskit.circuit.library.standard_gates.x", "C3XGate"],
+    // C3SXGate = 43
+    ["qiskit.circuit.library.standard_gates.x", "C3SXGate"],
+    // C4XGate = 44
+    ["qiskit.circuit.library.standard_gates.x", "C4XGate"],
+    // DCXGate = 45
+    ["qiskit.circuit.library.standard_gates.dcx", "DCXGate"],
+    // CCZGate = 46
+    ["qiskit.circuit.library.standard_gates.z", "CCZGate"],
+    // RCCXGate = 47
+    ["qiskit.circuit.library.standard_gates.x", "RCCXGate"],
+    // RC3XGate = 48
+    ["qiskit.circuit.library.standard_gates.x", "RC3XGate"],
+    // RXXGate = 49
+    ["qiskit.circuit.library.standard_gates.rxx", "RXXGate"],
+    // RYYGate = 50
+    ["qiskit.circuit.library.standard_gates.ryy", "RYYGate"],
+    // RZZGate = 51
+    ["qiskit.circuit.library.standard_gates.rzz", "RZZGate"],
+    // RZXGate = 52
+    ["qiskit.circuit.library.standard_gates.rzx", "RZXGate"],
 ];
 
 /// A mapping from the enum variant in crate::operations::StandardGate to the python object for the
