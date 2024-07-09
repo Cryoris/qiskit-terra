@@ -153,6 +153,7 @@ class BlockCollector:
         unprocessed_pending_nodes = self._pending_nodes
         self._pending_nodes = []
 
+        print("unprocessed", unprocessed_pending_nodes)
         # Iteratively process unprocessed_pending_nodes:
         # - any node that does not match filter_fn is added to pending_nodes
         # - any node that match filter_fn is added to the current_block,
@@ -215,6 +216,7 @@ class BlockCollector:
             self.collect_matching_block(not_filter_fn)
             matching_block = self.collect_matching_block(filter_fn)
             if matching_block:
+                print("found a matching block")
                 matching_blocks.append(matching_block)
 
         # If the option split_layers is set, refine blocks by splitting them into layers

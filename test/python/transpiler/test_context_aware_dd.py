@@ -31,6 +31,7 @@ from qiskit.transpiler.passes import (
     ApplyLayout,
     PadDelay,
 )
+from qiskit.transpiler.passes.scheduling.combine_adjacent_delays import MultiDelay
 
 
 from test import QiskitTestCase  # pylint: disable=wrong-import-order
@@ -42,41 +43,12 @@ class TestContextAwareDD(QiskitTestCase):
 
     def setUp(self):
         super().setUp()
-        num_qubits = 5
 
         # gate times in terms of dt
         self.dt = 1e-9
         self.t_cx = 1e3
         self.t_sx = 10
         self.t_x = 20
-
-        # set up an idealistic target to test context-aware DD in a clean setting
-        # (if I don't also add realistic settings I should be scolded)
-        target = Target(num_qubits=num_qubits, dt=1e-9)
-        # bidirectional linear next neighbor
-        linear_topo = [(i, i + 1) for i in range(num_qubits - 1)]
-        linear_topo += [tuple(reversed(connection)) for connection in linear_topo]
-        # CX, SX and X gate durations (somewhat sensible durations and errors chosen)
-        cx_props = {
-            connection: InstructionProperties(duration=self.t_cx * self.dt, error=1e-2)
-            for connection in linear_topo
-        }
-        sx_props = {
-            (i,): InstructionProperties(duration=self.t_sx * self.dt, error=1e-4)
-            for i in range(num_qubits)
-        }
-        x_props = {
-            (i,): InstructionProperties(duration=self.t_x * self.dt, error=1e-4)
-            for i in range(num_qubits)
-        }
-        target.add_instruction(CXGate(), cx_props)
-        target.add_instruction(ECRGate(), cx_props)  # re-use CX props for ECR
-        target.add_instruction(CZGate(), cx_props)  # re-use CX props for CZ
-        target.add_instruction(SXGate(), sx_props)
-        target.add_instruction(XGate(), x_props)
-        target.add_instruction(Delay(1), sx_props)  # support delays, duration does not matter here
-
-        self.toy_target = target
 
     def simple_setting(self):
         """Get a simple circuit with 2 CX layers for testing."""
@@ -106,7 +78,8 @@ class TestContextAwareDD(QiskitTestCase):
 
     def test_full(self):
         """Test the full workflow on a simple circuit and a concrete reference."""
-        target = self.toy_target
+        target = get_toy_target(num_qubits=5, t_cx=self.t_cx)
+
         durations = target.durations()
         dd = PassManager(
             [
@@ -154,7 +127,7 @@ class TestContextAwareDD(QiskitTestCase):
         circuit.cx(0, 1)
         circuit.cx(1, 2)
 
-        target = self.toy_target
+        target = get_toy_target(num_qubits=5)
         dd = PassManager(
             [
                 CombineAdjacentDelays(target),
@@ -189,7 +162,7 @@ class TestContextAwareDD(QiskitTestCase):
                      └────┘ ░      └──────┘
 
         """
-        target = self.toy_target
+        target = get_toy_target(num_qubits=5, t_cx=self.t_cx)
         dd = PassManager(
             [
                 CombineAdjacentDelays(target),
@@ -239,7 +212,7 @@ class TestContextAwareDD(QiskitTestCase):
         """Test skipping of delays that are below the threshold."""
         skip_threshold = 0.6  # arbitrary threshold below 1
 
-        target = self.toy_target
+        target = get_toy_target(num_qubits=5, t_x=self.t_x)
         dd = PassManager(
             [
                 DynamicalDecouplingMulti(target, skip_threshold=skip_threshold),
@@ -274,7 +247,7 @@ class TestContextAwareDD(QiskitTestCase):
 
         Pulses should only start at integer multiples of the allowed pulse alignment.
         """
-        target = self.toy_target
+        target = get_toy_target(num_qubits=5)
         dd = PassManager(
             [
                 DynamicalDecouplingMulti(
@@ -297,7 +270,7 @@ class TestContextAwareDD(QiskitTestCase):
 
     def test_invalid_pulse_alignment(self):
         """Test an error is raised if the X gate length is not compatible with the pulse alignment."""
-        target = self.toy_target
+        target = get_toy_target(num_qubits=5, t_x=self.t_x)
         dd = PassManager(
             [
                 DynamicalDecouplingMulti(
@@ -370,6 +343,56 @@ class TestContextAwareDD(QiskitTestCase):
         with self.assertRaises(TranspilerError):
             _ = pm.run(circuit)
 
+    def test_collecting_adjacent_delays(self):
+        """Test collecting the largest adjacent blocks."""
+        num_qubits = 11  # an odd number!
+        circuit = QuantumCircuit(num_qubits)
+        center = num_qubits // 2
+        circuit.sx(center)
+        for i in range(num_qubits // 2):
+            circuit.cx(center - i, center - (i + 1))
+            circuit.cx(center + i, center + i + 1)
+
+        target = get_toy_target(num_qubits=num_qubits, t_sx=self.t_sx, t_cx=self.t_cx)
+        pm = _get_schedule_pm(target, list(range(num_qubits)))
+        pm.append(CombineAdjacentDelays(target))
+
+        scheduled = pm.run(circuit)
+        print(scheduled.draw())
+
+        # manually construct a reference circuit
+        reference = QuantumCircuit(num_qubits)
+        reference.sx(center)
+        # set up the initial delays
+        for i in range(center):
+            if i == center - 1:
+                reference.delay(self.t_sx, i)
+            else:
+                reference.delay(self.t_sx + (center - i) * self.t_cx, i)
+
+            reference.delay(self.t_sx + (center - i) * self.t_cx, num_qubits - i - 1)
+
+        # plug in the CX wave -- the first needs special treatment as the CX control on
+        # same qubit
+        reference.cx(center, center - 1)
+        reference.cx(center, center + 1)
+        multi_delay = MultiDelay(num_qubits=1, duration=self.t_cx)
+        reference.append(multi_delay, [center - 1])
+
+        for i in range(1, num_qubits // 2):
+            reference.cx(center - i, center - (i + 1))
+            reference.cx(center + i, center + i + 1)
+            multi_delay = MultiDelay(num_qubits=2 * i - 1, duration=self.t_cx)
+
+            # combine adjacent delays inserts the multi delay in a special order
+            # either do this, or write a checker that ignores the qubit order on MultiDelay
+            order = [center]
+            for j in range(1, (multi_delay.num_qubits + 1) // 2):
+                order += [center - j, center + j]
+            reference.append(multi_delay, order)
+
+        self.assertEqual(scheduled, reference)
+
 
 def _get_schedule_pm(target, initial_layout):
     durations = target.durations()
@@ -425,3 +448,33 @@ def expand_dd_sequence(sequence, unit):
         sign *= -1
 
     return signs
+
+
+def get_toy_target(num_qubits, dt=1e-9, t_cx=1e3, t_sx=10, t_x=20):
+    """Get a toy target."""
+
+    # set up an idealistic target to test context-aware DD in a clean setting
+    # (if I don't also add realistic settings I should be scolded)
+    target = Target(num_qubits=num_qubits, dt=dt)
+    # bidirectional linear next neighbor
+    linear_topo = [(i, i + 1) for i in range(num_qubits - 1)]
+    linear_topo += [tuple(reversed(connection)) for connection in linear_topo]
+    # CX, SX and X gate durations (somewhat sensible durations and errors chosen)
+    cx_props = {
+        connection: InstructionProperties(duration=t_cx * dt, error=1e-2)
+        for connection in linear_topo
+    }
+    sx_props = {
+        (i,): InstructionProperties(duration=t_sx * dt, error=1e-4) for i in range(num_qubits)
+    }
+    x_props = {
+        (i,): InstructionProperties(duration=t_x * dt, error=1e-4) for i in range(num_qubits)
+    }
+    target.add_instruction(CXGate(), cx_props)
+    target.add_instruction(ECRGate(), cx_props)  # re-use CX props for ECR
+    target.add_instruction(CZGate(), cx_props)  # re-use CX props for CZ
+    target.add_instruction(SXGate(), sx_props)
+    target.add_instruction(XGate(), x_props)
+    target.add_instruction(Delay(1), sx_props)  # support delays, duration does not matter here
+
+    return target

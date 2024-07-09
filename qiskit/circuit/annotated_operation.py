@@ -219,6 +219,26 @@ class AnnotatedOperation(Operation):
         extended_modifiers.append(PowerModifier(exponent))
         return AnnotatedOperation(self.base_op, extended_modifiers)
 
+    @property
+    def params(self):
+        if p := getattr(self.base_op, "params", None):
+            return p
+
+        raise NotImplementedError("No attribute ``params`` on an Instruction.")
+
+    @params.setter
+    def params(self, value):
+        if hasattr(self.base_op, "params"):
+            self.base_op.params = value
+        else:
+            raise NotImplementedError("No attribute ``params`` on an Instruction.")
+
+    def validate_parameter(self, parameter):
+        if hasattr(self.base_op, "validate_parameter"):
+            return self.base_op.validate_parameter(parameter)
+
+        raise NotImplementedError("No attribute ``validate_parameter`` on an Instruction.")
+
 
 def _canonicalize_modifiers(modifiers):
     """
