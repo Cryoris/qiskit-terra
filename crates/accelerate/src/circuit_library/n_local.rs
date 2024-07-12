@@ -10,9 +10,18 @@
 // copyright notice, and modified files need to carry a notice indicating
 // that they have been altered from the originals.
 
-use itertools::Itertools;
+use std::borrow::Borrow;
+
 use pyo3::prelude::*;
-use pyo3::types::PyTuple;
+use qiskit_circuit::circuit_instruction::PackedInstruction;
+use rustworkx_core::petgraph::adj::NodeIndex;
+use rustworkx_core::petgraph::graph::Node;
+use smallvec::smallvec;
+
+use qiskit_circuit::circuit_data::CircuitData;
+use qiskit_circuit::circuit_instruction::CircuitInstruction;
+use qiskit_circuit::operations::{Param, StandardGate};
+use qiskit_circuit::Qubit;
 
 use crate::circuit_library::entanglement;
 use crate::QiskitError;
@@ -47,15 +56,6 @@ use crate::QiskitError;
 /// Returns:
 ///     The entangler map using mode ``entanglement`` to scatter a block of ``block_size``
 ///     qubits on ``num_qubits`` qubits.
-// if m > n:
-//     raise ValueError(
-//         "The number of block qubits must be smaller or equal to the number of "
-//         "qubits in the circuit."
-//     )
-
-// if entanglement == "pairwise" and num_block_qubits > 2:
-//     raise ValueError("Pairwise entanglement is not defined for blocks with more than 2 qubits.")
-
 pub fn indices(
     num_qubits: usize,
     block_size: usize,
@@ -94,27 +94,75 @@ pub fn indices(
     }
 }
 
-#[pyfunction]
-#[pyo3(signature = (block_size, num_qubits, entanglement, offset))]
-pub fn get_entangler_map<'py>(
-    py: Python<'py>,
-    block_size: usize,
-    num_qubits: usize,
-    entanglement: &str,
-    offset: usize,
-) -> PyResult<Vec<Bound<'py, PyTuple>>> {
-    match indices(num_qubits, block_size, entanglement, offset) {
-        Ok(entanglement) => Ok(entanglement
-            .into_iter()
-            .map(|vec| PyTuple::new_bound(py, vec))
-            .collect_vec()),
-        Err(e) => Err(e),
+fn _rotation_layer(py: Python, out: &CircuitData, rotation_block: &CircuitData) -> () {
+    let num_qubits = out.num_qubits();
+    let block_size = rotation_block.num_qubits();
+    // let qubits: Vec<Qubit> = (0..num_qubits).map(|i| Qubit(i as u32)).collect();
+    // let qubits = out.qubits.map_indices(bits);
+
+    for i in 0..num_qubits / block_size {
+        let start_index = (i * block_size) as NodeIndex;
+        for (instruction, qargs, _) in rotation_block.iter() {
+            let indices = qargs.iter().map(|qubit| qubit.0);
+            let new_qubits: Vec<NodeIndex> = indices
+                .map(|local_index| start_index + local_index)
+                .collect();
+            // let new_qubits = out.qubits.map_indices([]);
+            let new_clbits: Vec<NodeIndex> = Vec::new();
+            let new_instruction = instruction.clone().op;
+            let circuit_instruction = CircuitInstruction::new(
+                py,
+                new_instruction,
+                new_qubits,
+                new_clbits,
+                smallvec![],
+                None,
+            )
+            .clone()
+            .into_py(py);
+
+            out.append(
+                py,
+                &circuit_instruction
+                    .downcast_bound::<CircuitInstruction>(py)
+                    .unwrap(),
+                None,
+            );
+        }
     }
 }
 
 #[pyfunction]
-#[pyo3(signature = (num_qubits, entanglement, block_size))]
-pub fn n_local(num_qubits: i64, entanglement: &str, block_size: usize) -> () {
-    let indices = indices(num_qubits as usize, block_size, entanglement, 0);
-    println!("{:?}", indices.unwrap().collect::<Vec<Vec<usize>>>());
+#[pyo3(signature = (num_qubits, entanglement))]
+pub fn n_local(
+    py: Python,
+    num_qubits: i64,
+    // rotation_block: CircuitData,
+    // entanglement_block: CircuitData,
+    entanglement: &str,
+) -> () {
+    let rotation_block = CircuitData::from_standard_gates(
+        py,
+        1,
+        [(StandardGate::HGate, smallvec![], smallvec![Qubit(0)])],
+        Param::Float(0.0),
+    )
+    .unwrap();
+
+    // let entanglement_block = CircuitData::from_standard_gates(
+    //     py,
+    //     2,
+    //     [(
+    //         StandardGate::CXGate,
+    //         smallvec![],
+    //         smallvec![Qubit(0), Qubit(1)],
+    //     )],
+    //     Param::Float(0.0),
+    // )
+    // .unwrap();
+
+    // let block_size = entanglement_block.num_qubits();
+    // let indices = indices(num_qubits as usize, block_size, entanglement, 0);
+
+    // _rotation_layer(num_qubits as usize, rotation_block)
 }

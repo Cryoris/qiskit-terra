@@ -11,13 +11,32 @@
 // that they have been altered from the originals.
 
 use pyo3::prelude::*;
+use pyo3::types::PyTuple;
 
 mod entanglement;
 mod n_local;
 
+#[pyfunction]
+#[pyo3(signature = (block_size, num_qubits, entanglement, offset))]
+pub fn get_entangler_map<'py>(
+    py: Python<'py>,
+    block_size: usize,
+    num_qubits: usize,
+    entanglement: &str,
+    offset: usize,
+) -> PyResult<Vec<Bound<'py, PyTuple>>> {
+    match n_local::indices(num_qubits, block_size, entanglement, offset) {
+        Ok(entanglement) => Ok(entanglement
+            .into_iter()
+            .map(|vec| PyTuple::new_bound(py, vec))
+            .collect()),
+        Err(e) => Err(e),
+    }
+}
+
 #[pymodule]
 pub fn circuit_library(m: &Bound<PyModule>) -> PyResult<()> {
     m.add_wrapped(wrap_pyfunction!(n_local::n_local))?;
-    m.add_wrapped(wrap_pyfunction!(n_local::get_entangler_map))?;
+    m.add_wrapped(wrap_pyfunction!(get_entangler_map))?;
     Ok(())
 }

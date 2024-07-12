@@ -1167,4 +1167,14 @@ impl CircuitData {
             py_op: RefCell::new(inst.py_op.clone()),
         })
     }
+
+    pub fn iter(&self) -> impl Iterator<Item = (&PackedInstruction, &Vec<Qubit>, &Vec<Clbit>)> {
+        self.data.iter().map(|inst| {
+            (
+                inst,
+                self.qargs_interner.intern(inst.qubits_id).value,
+                self.cargs_interner.intern(inst.clbits_id).value,
+            )
+        })
+    }
 }
