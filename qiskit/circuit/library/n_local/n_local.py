@@ -34,6 +34,8 @@ from qiskit.circuit.library.standard_gates import get_standard_gate_name_mapping
 
 from ..blueprintcircuit import BlueprintCircuit
 
+from qiskit._accelerate.circuit_library import n_local as rust_local
+
 if typing.TYPE_CHECKING:
     import qiskit  # pylint: disable=cyclic-import
 
