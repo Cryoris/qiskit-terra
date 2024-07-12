@@ -18,5 +18,6 @@ mod n_local;
 #[pymodule]
 pub fn circuit_library(m: &Bound<PyModule>) -> PyResult<()> {
     m.add_wrapped(wrap_pyfunction!(n_local::n_local))?;
+    m.add_wrapped(wrap_pyfunction!(n_local::get_entangler_map))?;
     Ok(())
 }

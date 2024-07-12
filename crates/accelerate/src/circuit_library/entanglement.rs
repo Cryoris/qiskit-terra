@@ -10,7 +10,7 @@
 // copyright notice, and modified files need to carry a notice indicating
 // that they have been altered from the originals.
 
-use crate::QiskitError;
+use qiskit_circuit::slice::PySequenceIndex;
 use std::iter;
 
 fn _combinations(n: usize, repetitions: usize) -> Vec<Vec<usize>> {
@@ -58,7 +58,7 @@ pub fn circular(num_qubits: usize, block_size: usize) -> Box<dyn Iterator<Item =
         let closing_link = (num_qubits - block_size + 1..num_qubits)
             .chain(iter::once(0))
             .collect();
-        Box::new(linear(num_qubits, block_size).chain(iter::once(closing_link)))
+        Box::new(iter::once(closing_link).chain(linear(num_qubits, block_size)))
     }
 }
 
@@ -75,7 +75,8 @@ pub fn shift_circular_alternating(
     offset: usize,
 ) -> Box<dyn Iterator<Item = Vec<usize>>> {
     // index at which we split the circular iterator
-    let split = num_qubits - block_size + 1 - offset;
+    let split =
+        PySequenceIndex::convert_idx(-(offset as isize), num_qubits - block_size + 2).unwrap();
     let shifted = circular(num_qubits, block_size)
         .skip(split)
         .chain(circular(num_qubits, block_size).take(split));

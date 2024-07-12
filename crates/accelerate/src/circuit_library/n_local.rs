@@ -10,7 +10,9 @@
 // copyright notice, and modified files need to carry a notice indicating
 // that they have been altered from the originals.
 
+use itertools::Itertools;
 use pyo3::prelude::*;
+use pyo3::types::PyTuple;
 
 use crate::circuit_library::entanglement;
 use crate::QiskitError;
@@ -89,6 +91,24 @@ pub fn indices(
             "Unsupported entanglement: {}",
             entanglement
         ))),
+    }
+}
+
+#[pyfunction]
+#[pyo3(signature = (block_size, num_qubits, entanglement, offset))]
+pub fn get_entangler_map<'py>(
+    py: Python<'py>,
+    block_size: usize,
+    num_qubits: usize,
+    entanglement: &str,
+    offset: usize,
+) -> PyResult<Vec<Bound<'py, PyTuple>>> {
+    match indices(num_qubits, block_size, entanglement, offset) {
+        Ok(entanglement) => Ok(entanglement
+            .into_iter()
+            .map(|vec| PyTuple::new_bound(py, vec))
+            .collect_vec()),
+        Err(e) => Err(e),
     }
 }
 
