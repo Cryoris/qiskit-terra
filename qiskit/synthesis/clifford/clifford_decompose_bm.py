@@ -30,6 +30,7 @@ from qiskit.quantum_info.operators.symplectic.clifford_circuits import (
     _append_v,
     _append_w,
 )
+from qiskit.transpiler.passes import Decompose
 
 
 def synth_clifford_bm(clifford: Clifford) -> QuantumCircuit:
@@ -82,7 +83,9 @@ def synth_clifford_bm(clifford: Clifford) -> QuantumCircuit:
     if len(inv_circuit) > 0:
         ret_circ.append(inv_circuit.inverse(), range(num_qubits), copy=False)
 
-    return ret_circ.decompose()
+    ret_circ = Decompose()(ret_circ)
+    return ret_circ
+    # return ret_circ.decompose()
 
 
 # ---------------------------------------------------------------------
