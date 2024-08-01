@@ -592,14 +592,20 @@ class HighLevelSynthesis(TransformationPass):
                 qargs = tuple(index_to_qubit[index] for index in qubits)
                 if isinstance(op, Operation):
                     out.apply_operation_back(op, qargs, cargs=[])
-                    continue
 
                 if isinstance(op, QuantumCircuit):
-                    op = circuit_to_dag(op)
+                    op = circuit_to_dag(op, copy_operations=False)
 
                 if isinstance(op, DAGCircuit):
+                    qubit_map = {
+                        qubit: index_to_qubit[index] for index, qubit in zip(qubits, op.qubits)
+                    }
+                    for sub_node in op.op_nodes():
+                        out.apply_operation_back(
+                            sub_node.op, tuple(qubit_map[qarg] for qarg in sub_node.qargs)
+                        )
                     # handle different types of ops
-                    out.compose(op, qargs, inplace=True)
+                    # out.compose(op, qargs, inplace=True)
                 else:
                     raise RuntimeError(f"Unexpected synthesized type: {type(op)}")
                 # out.apply_operation_back(op, qubits, cargs=())
@@ -679,7 +685,7 @@ class HighLevelSynthesis(TransformationPass):
             elif isinstance(synthesized, QuantumCircuit):
                 aux_qubits = tracker.borrow(synthesized.num_qubits - len(qubits), qubits)
                 used_qubits = qubits + tuple(aux_qubits)
-                as_dag = circuit_to_dag(synthesized)
+                as_dag = circuit_to_dag(synthesized, copy_operations=False)
                 # map used qubits to subcircuit
                 # qubit_map = {used_qubit: i for i, used_qubit in enumerate(used_qubits)}
                 # qubit_map = {}
