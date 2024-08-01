@@ -536,6 +536,16 @@ class HighLevelSynthesis(TransformationPass):
         synthesized_nodes = {}
 
         for node in dag.topological_op_nodes():
+            if dag.has_calibration_for(node) or len(node.qargs) < self._min_qubits:
+                continue
+
+            if node.is_directive():
+                continue
+
+            if node.is_control_flow():
+                node.op = control_flow.map_blocks(self.run, node.op)
+                continue
+
             # If the layout has been set, we additionally need to keep track of the qubit indices
             # which tell us if an operation is supported on a specific set of qubits. If it is not,
             # we can save this.
@@ -546,13 +556,6 @@ class HighLevelSynthesis(TransformationPass):
             )
 
             if self._definitely_skip_node(node, qubit_indices):
-                continue
-
-            if node.is_directive():
-                continue
-
-            if node.is_control_flow():
-                node.op = control_flow.map_blocks(self.run, node.op)
                 continue
 
             synthesized, qubits = self.synthesize_operation(
