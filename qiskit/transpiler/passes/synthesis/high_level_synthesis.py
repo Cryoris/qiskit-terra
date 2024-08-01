@@ -532,9 +532,6 @@ class HighLevelSynthesis(TransformationPass):
         return self._run(dag, tracker)
 
     def _run(self, dag: DAGCircuit, tracker: QubitTracker) -> DAGCircuit:
-        print("=== running on")
-        print(dag_to_circuit(dag))
-
         # analyze operations
         synthesized_nodes = {}
 
@@ -578,28 +575,22 @@ class HighLevelSynthesis(TransformationPass):
 
         # we did not change anything just return the input
         if len(synthesized_nodes) == 0:
-            print("=== didn't change, returning")
             return dag
 
         # Otherwise we will rebuild with the new operations. Note that we could also
         # check if no operation changed in size and substitute in-place, but rebuilding is
         # generally as fast or faster, unless very few operations are changed.
-        print("== got changed, rebuilding")
         out = dag.copy_empty_like()
 
         for node in dag.topological_op_nodes():
             if node in synthesized_nodes:
                 op, qubits = synthesized_nodes[node]
                 if isinstance(op, Operation):
-                    print("adding operation", op)
                     out.apply_operation_back(op, qubits, cargs=[])
                     continue
 
                 if isinstance(op, QuantumCircuit):
-                    print("adding circuit")
                     op = circuit_to_dag(op)
-                else:
-                    print("adding dag")
 
                 if isinstance(op, DAGCircuit):
                     # handle different types of ops
@@ -610,8 +601,6 @@ class HighLevelSynthesis(TransformationPass):
             else:
                 out.apply_operation_back(node.op, node.qargs, node.cargs, check=False)
 
-        print("- got")
-        print(dag_to_circuit(out))
         return out
 
     def synthesize_operation(
@@ -675,7 +664,6 @@ class HighLevelSynthesis(TransformationPass):
 
         else:
             # if it has been synthesized, recurse and finally store the decomposition
-            print("-> synthesized to", type(synthesized), "\n", synthesized, "\n")
             if isinstance(synthesized, Operation):
                 re_synthesized, qubits = self.synthesize_operation(
                     dag, synthesized, qubits, tracker
@@ -690,7 +678,6 @@ class HighLevelSynthesis(TransformationPass):
             elif isinstance(synthesized, QuantumCircuit):
                 aux_qubits = tracker.borrow(synthesized.num_qubits - len(qubits), qubits)
                 used_qubits = qubits + tuple(aux_qubits)
-                print("-- used qubits", used_qubits)
                 as_dag = circuit_to_dag(synthesized)
                 qubit_map = {used_qubits[i]: qubit for i, qubit in enumerate(as_dag.qubits)}
 
@@ -719,7 +706,6 @@ class HighLevelSynthesis(TransformationPass):
             )
             # include path for when target exists but target.num_qubits is None (BasicSimulator)
             inst_supported = self._instruction_supported(inst.name, qubit_indices)
-            print("-- inst supported?", inst_supported)
             if inst_supported or (self._equiv_lib is not None and self._equiv_lib.has_entry(inst)):
                 return None  # we support this operation already
 
@@ -732,7 +718,6 @@ class HighLevelSynthesis(TransformationPass):
         if definition is None:
             raise TranspilerError(f"HighLevelSynthesis was unable to synthesize {inst}.")
 
-        print("-- unrolled to\n", definition.draw())
         return definition
 
     def _methods_to_try(self, name: str):
@@ -848,14 +833,12 @@ class HighLevelSynthesis(TransformationPass):
                 if isinstance(synthesized, QuantumCircuit):
                     synthesized = synthesized.to_gate()
 
-                print("-- calling gate control")
                 synthesized = synthesized.control(
                     num_ctrl_qubits=modifier.num_ctrl_qubits,
                     label=None,
                     ctrl_state=modifier.ctrl_state,
                     annotated=False,
                 )
-                print("-- built controlled")
 
                 if isinstance(synthesized, AnnotatedOperation):
                     raise TranspilerError(
