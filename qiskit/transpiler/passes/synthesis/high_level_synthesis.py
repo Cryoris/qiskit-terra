@@ -325,10 +325,9 @@ def instruction_to_circuit(inst: Instruction) -> QuantumCircuit:
 class QubitTracker:
     """Track qubits per index as and their state."""
 
-    qubits: list[Qubit]
-    states: dict[
-        int, bool
-    ]  # for now: True == |0> and False == any state, could be extended in future
+    qubits: tuple[int]
+    clean: set[int]
+    dirty: set[int]
 
     def num_of_state(self, state: bool, active_qubits: list[int] | None = None):
         """Return the number of qubits with given ``state``.
@@ -344,11 +343,11 @@ class QubitTracker:
 
         return states.count(state)
 
-    def num_clean(self, active_qubits: list[int] | None = None):
-        return self.num_of_state(True, active_qubits)
+    def num_clean(self, active_qubits: set[int] | None = None):
+        return self.clean.difference(active_qubits or set())
 
-    def num_dirty(self, active_qubits: list[int] | None = None):
-        return self.num_of_state(False, active_qubits)
+    def num_dirty(self, active_qubits: set[int] | None = None):
+        return self.dirty.difference(active_qubits or set())
 
     def borrow(self, num_qubits: int, active_qubits: list[int] | None = None) -> list[Qubit]:
         """Get ``num_qubits`` qubits, excluding ``active_qubits``."""
@@ -360,19 +359,23 @@ class QubitTracker:
 
         return [qubit for qubit in self.qubits if qubit not in active_qubits][:num_qubits]
 
-    def used(self, qubits: list[int]) -> None:
+    def used(self, qubits: set[int]) -> None:
         """Set the state of ``qubits`` to used (i.e. False)."""
-        for qubit in qubits:
-            if qubit not in self.states:
-                raise KeyError(f"Setting state of unknown qubit {qubit}.")
-            self.states[qubit] = False
+        self.clean.discard(qubits)
+        self.dirty.update(qubits)
+        # could add checks
+        # for qubit in qubits:
+        #     if qubit not in self.states:
+        #         raise KeyError(f"Setting state of unknown qubit {qubit}.")
 
-    def reset(self, qubits: list[int]) -> None:
+    def reset(self, qubits: set[int]) -> None:
         """Set the state of ``qubits`` to 0 (i.e. True)."""
-        for qubit in qubits:
-            if qubit not in self.states:
-                raise KeyError(f"Setting state of unknown qubit {qubit}.")
-            self.states[qubit] = True
+        self.dirty.discard(qubits)
+        self.clean.update(qubits)
+        # for qubit in qubits:
+        #     if qubit not in self.states:
+        #         raise KeyError(f"Setting state of unknown qubit {qubit}.")
+        #     self.states[qubit] = True
 
     def copy(self, qubit_map: dict[int, int] | None = None) -> "QubitTracker":
         """Copy self.
@@ -382,15 +385,17 @@ class QubitTracker:
                 the qubits in the tracker.
         """
         if qubit_map is None:
-            qubits = self.qubits  # tuples are immutable, no need to copy
-            states = self.states.copy()
+            clean = self.clean.copy()
+            dirty = self.dirty.copy()
+            qubits = self.qubits  # tuple is immutable, no need to copy
         else:
+            raise NotImplementedError("currently broken yo")
             qubits = tuple(qubit_map.values())
             states = {
                 new_qubit: self.states[old_qubit] for old_qubit, new_qubit in qubit_map.items()
             }
 
-        return QubitTracker(qubits, states)
+        return QubitTracker(qubits, clean=clean, dirty=dirty)
 
 
 class HighLevelSynthesis(TransformationPass):
@@ -528,9 +533,8 @@ class HighLevelSynthesis(TransformationPass):
             TranspilerError: when the transpiler is unable to synthesize the given DAG
             (for instance, when the specified synthesis method is not available).
         """
-        tracker = QubitTracker(
-            tuple(range(dag.num_qubits())), {i: True for i in range(dag.num_qubits())}
-        )
+        qubits = range(dag.num_qubits())
+        tracker = QubitTracker(tuple(qubits), clean=set(qubits), dirty=set())
         return self._run(dag, tracker)
 
     def _run(self, dag: DAGCircuit, tracker: QubitTracker) -> DAGCircuit:
