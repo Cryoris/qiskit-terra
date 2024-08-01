@@ -362,7 +362,7 @@ class QubitTracker:
                 raise KeyError(f"Setting state of unknown qubit {qubit}.")
             self.states[qubit] = True
 
-    def copy(self, qubit_map: dict[Qubit, Qubit] | None) -> "QubitTracker":
+    def copy(self, qubit_map: dict[Qubit, Qubit] | None = None) -> "QubitTracker":
         """Copy self.
 
         Args:
@@ -370,7 +370,7 @@ class QubitTracker:
                 the qubits in the tracker.
         """
         if qubit_map is None:
-            qubits = self.qubit.copy()
+            qubits = self.qubits.copy()
             states = self.states.copy()
         else:
             qubits = list(qubit_map.values())
@@ -525,6 +525,9 @@ class HighLevelSynthesis(TransformationPass):
         synthesized_nodes = {}
 
         for node in dag.topological_op_nodes():
+            if isinstance(node.op, ControlFlowOp):
+                node.op = control_flow.map_blocks(self.run, node.op)
+
             synthesized, qubits = self.synthesize_operation(dag, node.op, node.qargs, tracker)
 
             if synthesized is not None:
@@ -557,11 +560,16 @@ class HighLevelSynthesis(TransformationPass):
                 op, qubits = synthesized_nodes[node]
                 if isinstance(op, Operation):
                     out.apply_operation_back(op, qubits, cargs=[])
-                elif isinstance(op, DAGCircuit):
+                    continue
+
+                if isinstance(op, QuantumCircuit):
+                    op = circuit_to_dag(op)
+
+                if isinstance(op, DAGCircuit):
                     # handle different types of ops
                     out.compose(op, qubits, inplace=True)
                 else:
-                    raise RuntimeError("Unexpected synthesized type.")
+                    raise RuntimeError(f"Unexpected synthesized type: {type(op)}")
                 # out.apply_operation_back(op, qubits, cargs=())
             else:
                 out.apply_operation_back(node.op, node.qargs, node.cargs, check=False)
@@ -574,7 +582,7 @@ class HighLevelSynthesis(TransformationPass):
         self,
         dag: DAGCircuit,  # this could be avoided if we knew the global qubit index for unroll ops
         operation: Operation,
-        qubits: tuple[Qubit] | None,
+        qubits: tuple[Qubit],
         tracker: QubitTracker,
     ) -> QuantumCircuit | Operation | DAGCircuit | None:
         synthesized = None
@@ -584,9 +592,20 @@ class HighLevelSynthesis(TransformationPass):
 
         # try synthesizing via AnnotatedOperation
         if isinstance(operation, AnnotatedOperation):
-            # currently no support
+            # The base operation must be synthesized without using potential control qubits
+            # used in the modifiers.
+            num_ctrl = sum(
+                mod.num_ctrl_qubits
+                for mod in operation.modifiers
+                if isinstance(mod, ControlModifier)
+            )
+            baseop_qubits = qubits[num_ctrl:]  # reminder: control qubits are the first ones
+            baseop_tracker = tracker.copy()
+            baseop_tracker.used(qubits[:num_ctrl])  # no access to control qubits
+
+            # get qubits of base operation
             synthesized_base_op, _ = self.synthesize_operation(
-                dag, operation.base_op, qubits, tracker
+                dag, operation.base_op, baseop_qubits, baseop_tracker
             )
             if synthesized_base_op is None:
                 synthesized_base_op = operation.base_op
@@ -601,8 +620,11 @@ class HighLevelSynthesis(TransformationPass):
 
         # try synthesizing via HLS
         if synthesized is None:
+            qubit_indices = (
+                [dag.find_bit(q).index for q in qubits] if self._use_qubit_indices else None
+            )
             synthesized = self._synthesize_op_using_plugins(
-                operation, qubits, tracker.num_clean(qubits), tracker.num_dirty(qubits)
+                operation, qubit_indices, tracker.num_clean(qubits), tracker.num_dirty(qubits)
             )
             if synthesized is not None:
                 print("-- HLS synthesized to", type(synthesized))
@@ -617,7 +639,7 @@ class HighLevelSynthesis(TransformationPass):
 
         # if it has been synthesized, recurse and finally store the decomposition
         if synthesized is not None:
-            print("-> synthesized to", synthesized)
+            print("-> synthesized to", type(synthesized), "\n", synthesized, "\n")
             if isinstance(synthesized, Operation):
                 re_synthesized, qubits = self.synthesize_operation(
                     dag, synthesized, qubits, tracker
@@ -638,7 +660,10 @@ class HighLevelSynthesis(TransformationPass):
 
                 synthesized = self._run(as_dag, tracker.copy(qubit_map))
                 if synthesized.num_qubits() != len(used_qubits):
-                    raise RuntimeError("wrong size")
+                    raise RuntimeError(
+                        f"Mismatching number of qubits, using {synthesized.num_qubits()} "
+                        "but have {len(used_qubits)}."
+                    )
 
             else:
                 raise RuntimeError(f"Unexpected synthesized type: {type(synthesized)}")
