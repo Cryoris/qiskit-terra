@@ -323,14 +323,14 @@ def instruction_to_circuit(inst: Instruction) -> QuantumCircuit:
 
 @dataclass
 class QubitTracker:
-    """Track qubits and their state."""
+    """Track qubits per index as and their state."""
 
     qubits: list[Qubit]
     states: dict[
-        Qubit, bool
+        int, bool
     ]  # for now: True == |0> and False == any state, could be extended in future
 
-    def num_of_state(self, state: bool, active_qubits: list[Qubit] | None = None):
+    def num_of_state(self, state: bool, active_qubits: list[int] | None = None):
         """Return the number of qubits with given ``state``.
 
         Args:
@@ -344,13 +344,13 @@ class QubitTracker:
 
         return states.count(state)
 
-    def num_clean(self, active_qubits: list[Qubit] | None = None):
+    def num_clean(self, active_qubits: list[int] | None = None):
         return self.num_of_state(True, active_qubits)
 
-    def num_dirty(self, active_qubits: list[Qubit] | None = None):
+    def num_dirty(self, active_qubits: list[int] | None = None):
         return self.num_of_state(False, active_qubits)
 
-    def borrow(self, num_qubits: int, active_qubits: list[Qubit] | None = None) -> list[Qubit]:
+    def borrow(self, num_qubits: int, active_qubits: list[int] | None = None) -> list[Qubit]:
         """Get ``num_qubits`` qubits, excluding ``active_qubits``."""
         if active_qubits is None:
             active_qubits = []
@@ -360,21 +360,21 @@ class QubitTracker:
 
         return [qubit for qubit in self.qubits if qubit not in active_qubits][:num_qubits]
 
-    def used(self, qubits: list[Qubit]) -> None:
+    def used(self, qubits: list[int]) -> None:
         """Set the state of ``qubits`` to used (i.e. False)."""
         for qubit in qubits:
             if qubit not in self.states:
                 raise KeyError(f"Setting state of unknown qubit {qubit}.")
             self.states[qubit] = False
 
-    def reset(self, qubits: list[Qubit]) -> None:
+    def reset(self, qubits: list[int]) -> None:
         """Set the state of ``qubits`` to 0 (i.e. True)."""
         for qubit in qubits:
             if qubit not in self.states:
                 raise KeyError(f"Setting state of unknown qubit {qubit}.")
             self.states[qubit] = True
 
-    def copy(self, qubit_map: dict[Qubit, Qubit] | None = None) -> "QubitTracker":
+    def copy(self, qubit_map: dict[int, int] | None = None) -> "QubitTracker":
         """Copy self.
 
         Args:
@@ -382,10 +382,10 @@ class QubitTracker:
                 the qubits in the tracker.
         """
         if qubit_map is None:
-            qubits = self.qubits.copy()
+            qubits = self.qubits  # tuples are immutable, no need to copy
             states = self.states.copy()
         else:
-            qubits = list(qubit_map.values())
+            qubits = tuple(qubit_map.values())
             states = {
                 new_qubit: self.states[old_qubit] for old_qubit, new_qubit in qubit_map.items()
             }
@@ -528,7 +528,9 @@ class HighLevelSynthesis(TransformationPass):
             TranspilerError: when the transpiler is unable to synthesize the given DAG
             (for instance, when the specified synthesis method is not available).
         """
-        tracker = QubitTracker(dag.qubits, {qubit: True for qubit in dag.qubits})
+        tracker = QubitTracker(
+            tuple(range(dag.num_qubits())), {i: True for i in range(dag.num_qubits())}
+        )
         return self._run(dag, tracker)
 
     def _run(self, dag: DAGCircuit, tracker: QubitTracker) -> DAGCircuit:
@@ -549,32 +551,26 @@ class HighLevelSynthesis(TransformationPass):
             # If the layout has been set, we additionally need to keep track of the qubit indices
             # which tell us if an operation is supported on a specific set of qubits. If it is not,
             # we can save this.
-            qubit_indices = (
-                tuple(dag.find_bit(q).index for q in node.qargs)
-                if self._use_qubit_indices
-                else None
-            )
+            qubits = tuple(dag.find_bit(q).index for q in node.qargs)
 
-            if self._definitely_skip_node(node, qubit_indices):
+            if self._definitely_skip_node(node, qubits):
                 continue
 
-            synthesized, qubits = self.synthesize_operation(
-                dag, node.op, node.qargs, tracker, qubit_indices
-            )
+            synthesized, used_qubits = self.synthesize_operation(dag, node.op, qubits, tracker)
 
             if synthesized is not None:
-                synthesized_nodes[node] = (synthesized, qubits)
+                synthesized_nodes[node] = (synthesized, used_qubits)
 
                 # mark the operation qubits as used
-                tracker.used(node.qargs)
+                tracker.used(qubits)
             else:
                 # update the auxiliary qubit trackers
                 if isinstance(node.op, (IGate, Delay, Barrier)):
                     pass  # tracker not updated, these are no-ops
                 elif isinstance(node.op, Reset):
-                    tracker.reset(node.qargs)
+                    tracker.reset(qubits)
                 else:  # any other op used the clean state up
-                    tracker.used(node.qargs)
+                    tracker.used(qubits)
 
         # we did not change anything just return the input
         if len(synthesized_nodes) == 0:
@@ -584,12 +580,14 @@ class HighLevelSynthesis(TransformationPass):
         # check if no operation changed in size and substitute in-place, but rebuilding is
         # generally as fast or faster, unless very few operations are changed.
         out = dag.copy_empty_like()
+        index_to_qubit = dict(enumerate(dag.qubits))
 
         for node in dag.topological_op_nodes():
             if node in synthesized_nodes:
                 op, qubits = synthesized_nodes[node]
+                qargs = tuple(index_to_qubit[index] for index in qubits)
                 if isinstance(op, Operation):
-                    out.apply_operation_back(op, qubits, cargs=[])
+                    out.apply_operation_back(op, qargs, cargs=[])
                     continue
 
                 if isinstance(op, QuantumCircuit):
@@ -597,7 +595,7 @@ class HighLevelSynthesis(TransformationPass):
 
                 if isinstance(op, DAGCircuit):
                     # handle different types of ops
-                    out.compose(op, qubits, inplace=True)
+                    out.compose(op, qargs, inplace=True)
                 else:
                     raise RuntimeError(f"Unexpected synthesized type: {type(op)}")
                 # out.apply_operation_back(op, qubits, cargs=())
@@ -610,9 +608,8 @@ class HighLevelSynthesis(TransformationPass):
         self,
         dag: DAGCircuit,  # this could be avoided if we knew the global qubit index for unroll ops
         operation: Operation,
-        qubits: tuple[Qubit],
+        qubits: tuple[int],
         tracker: QubitTracker,
-        qubit_indices: tuple[int] | None = None,
     ) -> QuantumCircuit | Operation | DAGCircuit | None:
         # Try to synthesize the operation. We'll go through the following options:
         #  (1) Annotations: if the operator is annotated, synthesize the base operation
@@ -650,11 +647,8 @@ class HighLevelSynthesis(TransformationPass):
 
         # try synthesizing via HLS
         if synthesized is None:
-            qubit_indices = (
-                [dag.find_bit(q).index for q in qubits] if self._use_qubit_indices else None
-            )
             synthesized = self._synthesize_op_using_plugins(
-                operation, qubit_indices, tracker.num_clean(qubits), tracker.num_dirty(qubits)
+                operation, qubits, tracker.num_clean(qubits), tracker.num_dirty(qubits)
             )
 
         # try unrolling custom definitions
@@ -682,9 +676,11 @@ class HighLevelSynthesis(TransformationPass):
                 aux_qubits = tracker.borrow(synthesized.num_qubits - len(qubits), qubits)
                 used_qubits = qubits + tuple(aux_qubits)
                 as_dag = circuit_to_dag(synthesized)
-                qubit_map = {used_qubits[i]: qubit for i, qubit in enumerate(as_dag.qubits)}
+                # map used qubits to subcircuit
+                # qubit_map = {used_qubit: i for i, used_qubit in enumerate(used_qubits)}
+                # qubit_map = {}
 
-                synthesized = self._run(as_dag, tracker.copy(qubit_map))
+                synthesized = self._run(as_dag, tracker.copy())
                 if synthesized.num_qubits() != len(used_qubits):
                     raise RuntimeError(
                         f"Mismatching number of qubits, using {synthesized.num_qubits()} "
@@ -700,15 +696,12 @@ class HighLevelSynthesis(TransformationPass):
         return synthesized, used_qubits
 
     def _unroll_custom_definition(
-        self, dag: DAGCircuit, inst: Instruction, qubits: list[Qubit] | None
+        self, dag: DAGCircuit, inst: Instruction, qubits: list[int] | None
     ) -> QuantumCircuit | None:
         # check if the operation is already supported natively
         if not (isinstance(inst, ControlledGate) and inst._open_ctrl):
-            qubit_indices = (
-                tuple(dag.find_bit(qubit).index for qubit in qubits) if qubits is not None else None
-            )
             # include path for when target exists but target.num_qubits is None (BasicSimulator)
-            inst_supported = self._instruction_supported(inst.name, qubit_indices)
+            inst_supported = self._instruction_supported(inst.name, qubits)
             if inst_supported or (self._equiv_lib is not None and self._equiv_lib.has_entry(inst)):
                 return None  # we support this operation already
 
@@ -861,7 +854,7 @@ class HighLevelSynthesis(TransformationPass):
 
         return synthesized
 
-    def _definitely_skip_node(self, node: DAGOpNode, qubit_indices: tuple[int] | None) -> bool:
+    def _definitely_skip_node(self, node: DAGOpNode, qubits: tuple[int] | None) -> bool:
         """Fast-path determination of whether a node can certainly be skipped (i.e. nothing will
         attempt to synthesise it) without accessing its Python-space `Operation`.
 
@@ -879,7 +872,7 @@ class HighLevelSynthesis(TransformationPass):
             # If all the above constraints hold, and it's already supported or the basis translator
             # can handle it, we'll leave it be.
             and (
-                self._instruction_supported(node.name, qubit_indices)
+                self._instruction_supported(node.name, qubits)
                 # This uses unfortunately private details of `EquivalenceLibrary`, but so does the
                 # `BasisTranslator`, and this is supposed to just be temporary til this is moved
                 # into Rust space.
@@ -891,11 +884,11 @@ class HighLevelSynthesis(TransformationPass):
             )
         )
 
-    def _instruction_supported(self, name: str, qubit_indices: tuple[int] | None) -> bool:
+    def _instruction_supported(self, name: str, qubits: tuple[int] | None) -> bool:
         # include path for when target exists but target.num_qubits is None (BasicSimulator)
         if self._target is None or self._target.num_qubits is None:
             return name in self._device_insts
-        return self._target.instruction_supported(operation_name=name, qargs=qubit_indices)
+        return self._target.instruction_supported(operation_name=name, qargs=qubits)
 
 
 class DefaultSynthesisClifford(HighLevelSynthesisPlugin):
