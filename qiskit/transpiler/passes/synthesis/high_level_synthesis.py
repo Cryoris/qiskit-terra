@@ -162,7 +162,7 @@ QFT Synthesis
 from __future__ import annotations
 
 import typing
-from typing import Optional, Union, List, Callable, Sequence
+from typing import Optional, Union, List, Callable
 from dataclasses import dataclass
 
 import numpy as np
@@ -175,16 +175,8 @@ from qiskit.circuit.instruction import Instruction
 from qiskit.converters import circuit_to_dag, dag_to_circuit
 from qiskit.transpiler.basepasses import TransformationPass
 from qiskit.circuit.quantumcircuit import QuantumCircuit
-from qiskit.circuit import (
-    ControlFlowOp,
-    ControlledGate,
-    EquivalenceLibrary,
-    Barrier,
-    Delay,
-    Reset,
-    equivalence,
-)
-from qiskit.circuit.library import LinearFunction, IGate
+from qiskit.circuit import ControlledGate, EquivalenceLibrary, equivalence
+from qiskit.circuit.library import LinearFunction
 from qiskit.transpiler.passes.utils import control_flow
 from qiskit.transpiler.target import Target
 from qiskit.transpiler.coupling import CouplingMap
@@ -538,43 +530,51 @@ class HighLevelSynthesis(TransformationPass):
         return self._run(dag, tracker)
 
     def _run(self, dag: DAGCircuit, tracker: QubitTracker) -> DAGCircuit:
-        # analyze operations
+        # Start by analyzing the nodes in the DAG. This for-loop is a first version of a potentially
+        # more elaborate approach to find good operation/ancilla allocations. It greedily iterates
+        # over the nodes, checking whether we can synthesize them, while keeping track of the
+        # qubit states. It does not trade-off allocations and just gives all available qubits
+        # to the current operation (a "the-first-takes-all" approach).
         synthesized_nodes = {}
 
         for node in dag.topological_op_nodes():
-            if dag.has_calibration_for(node) or len(node.qargs) < self._min_qubits:
-                continue
-
-            if node.is_directive():
-                continue
-
-            if node.is_control_flow():
-                node.op = control_flow.map_blocks(self.run, node.op)
-                continue
-
-            # If the layout has been set, we additionally need to keep track of the qubit indices
-            # which tell us if an operation is supported on a specific set of qubits. If it is not,
-            # we can save this.
             qubits = tuple(dag.find_bit(q).index for q in node.qargs)
+            synthesized = None
+            used_qubits = None
 
-            if self._definitely_skip_node(node, qubits):
-                continue
+            # check if synthesis for the operation can be skipped
+            if (
+                dag.has_calibration_for(node)
+                or len(node.qargs) < self._min_qubits
+                or node.is_directive()
+                or self._definitely_skip_node(node, qubits)
+            ):
+                pass
 
-            synthesized, used_qubits = self.synthesize_operation(dag, node.op, qubits, tracker)
+            # next check control flow
+            elif node.is_control_flow():
+                node.op = control_flow.map_blocks(self.run, node.op)
 
+            # now we are free to synthesize
+            else:
+                # this returns the synthesized operation and the qubits it acts on -- note that this
+                # may be different than the original qubits, since we may use auxiliary qubits
+                synthesized, used_qubits = self.synthesize_operation(dag, node.op, qubits, tracker)
+
+            # if the synthesis changed the operation (i.e. it is not None), store the result
+            # and mark the operation qubits as used
             if synthesized is not None:
                 synthesized_nodes[node] = (synthesized, used_qubits)
-
-                # mark the operation qubits as used
                 tracker.used(qubits)
+
+            # if the synthesis did not change anything, just update the qubit tracker
             else:
-                # update the auxiliary qubit trackers
-                if isinstance(node.op, (IGate, Delay, Barrier)):
+                if node.op.name in ["id", "delay", "barrier"]:
                     pass  # tracker not updated, these are no-ops
-                elif isinstance(node.op, Reset):
-                    tracker.reset(qubits)
-                else:  # any other op used the clean state up
-                    tracker.used(qubits)
+                elif node.op.name == "reset":
+                    tracker.reset(qubits)  # reset qubits to 0
+                else:
+                    tracker.used(qubits)  # any other op used the clean state up
 
         # we did not change anything just return the input
         if len(synthesized_nodes) == 0:
@@ -632,13 +632,12 @@ class HighLevelSynthesis(TransformationPass):
         synthesized = None
 
         # try synthesizing via AnnotatedOperation
-        if isinstance(operation, AnnotatedOperation):
+        # if isinstance(operation, AnnotatedOperation):
+        if len(modifiers := getattr(operation, "modifiers", [])) > 0:
             # The base operation must be synthesized without using potential control qubits
             # used in the modifiers.
             num_ctrl = sum(
-                mod.num_ctrl_qubits
-                for mod in operation.modifiers
-                if isinstance(mod, ControlModifier)
+                mod.num_ctrl_qubits for mod in modifiers if isinstance(mod, ControlModifier)
             )
             baseop_qubits = qubits[num_ctrl:]  # reminder: control qubits are the first ones
             baseop_tracker = tracker.copy()
@@ -655,14 +654,14 @@ class HighLevelSynthesis(TransformationPass):
 
             synthesized = self._apply_annotations(synthesized_base_op, operation.modifiers)
 
-        # try synthesizing via HLS
-        if synthesized is None:
+        # synthesize via HLS
+        elif len(hls_methods := self._methods_to_try(operation.name)) > 0:
             synthesized = self._synthesize_op_using_plugins(
-                operation, qubits, tracker.num_clean(qubits), tracker.num_dirty(qubits)
+                hls_methods, operation, qubits, tracker.num_clean(qubits), tracker.num_dirty(qubits)
             )
 
         # try unrolling custom definitions
-        if synthesized is None and not self._top_level_only:
+        elif not self._top_level_only:
             synthesized = self._unroll_custom_definition(dag, operation, qubits)
 
         if synthesized is None:
@@ -743,7 +742,12 @@ class HighLevelSynthesis(TransformationPass):
         return []
 
     def _synthesize_op_using_plugins(
-        self, op: Operation, qubits: List, num_clean_ancillas: int = 0, num_dirty_ancillas: int = 0
+        self,
+        hls_methods,
+        op: Operation,
+        qubits: List,
+        num_clean_ancillas: int = 0,
+        num_dirty_ancillas: int = 0,
     ) -> Union[QuantumCircuit, None]:
         """
         Attempts to synthesize op using plugin mechanism.
@@ -761,7 +765,7 @@ class HighLevelSynthesis(TransformationPass):
         best_decomposition = None
         best_score = np.inf
 
-        for method in self._methods_to_try(op.name):
+        for method in hls_methods:
             # There are two ways to specify a synthesis method. The more explicit
             # way is to specify it as a tuple consisting of a synthesis algorithm and a
             # list of additional arguments, e.g.,
@@ -818,10 +822,15 @@ class HighLevelSynthesis(TransformationPass):
                     best_decomposition = decomposition
                     best_score = current_score
 
+        if best_decomposition is None:
+            raise TranspilerError(
+                f"HLS failed to synthesize {op.name} given the provided methods {hls_methods}."
+            )
+
         return best_decomposition
 
     def _apply_annotations(
-        self, synthesized: Operation, modifiers: list[Modifier]
+        self, synthesized: Operation | QuantumCircuit, modifiers: list[Modifier]
     ) -> QuantumCircuit:
         """
         Recursively synthesizes annotated operations.
