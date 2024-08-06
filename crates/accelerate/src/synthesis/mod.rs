@@ -12,6 +12,7 @@
 
 mod clifford;
 pub mod linear;
+// mod mcmt;
 mod permutation;
 
 use pyo3::prelude::*;
@@ -22,5 +23,6 @@ pub fn synthesis(m: &Bound<PyModule>) -> PyResult<()> {
     m.add_wrapped(wrap_pymodule!(linear::linear))?;
     m.add_wrapped(wrap_pymodule!(permutation::permutation))?;
     m.add_wrapped(wrap_pymodule!(clifford::clifford))?;
+    // m.add_wrapped(wrap_pyfunction!(mcmt::mcmt_v_chain)?)?;
     Ok(())
 }

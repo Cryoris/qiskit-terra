@@ -195,6 +195,7 @@ from qiskit.synthesis.clifford import (
     synth_clifford_ag,
     synth_clifford_bm,
 )
+from qiskit.synthesis.multi_controlled import synth_mcmt_vchain
 from qiskit.synthesis.linear import (
     synth_cnot_count_full_pmh,
     synth_cnot_depth_line_kms,
@@ -811,6 +812,27 @@ class LayerLnnSynthesisClifford(HighLevelSynthesisPlugin):
         """Run synthesis for the given Clifford."""
         decomposition = synth_clifford_depth_lnn(high_level_object)
         return decomposition
+
+
+class DefaultSynthesisMCMT(HighLevelSynthesisPlugin):
+    """A default decomposition for MCMT gates."""
+
+    def run(self, high_level_object, coupling_map=None, target=None, qubits=None, **options):
+        return high_level_object.definition  # uses Qiskit's standard control mechanism
+
+
+class VChainSynthesisMCMT(HighLevelSynthesisPlugin):
+    """A V-chain based synthesis for ``MCMTGate``."""
+
+    def run(self, high_level_object, coupling_map=None, target=None, qubits=None, **options):
+        if options.get("num_clean_ancillas") < high_level_object.num_ctrl_qubits - 1:
+            return None  # insufficient number of auxiliary qubits
+
+        return synth_mcmt_vchain(
+            high_level_object.gaet,
+            high_level_object.num_ctrl_qubits,
+            high_level_object.num_target_qubits,
+        )
 
 
 class DefaultSynthesisLinearFunction(HighLevelSynthesisPlugin):
