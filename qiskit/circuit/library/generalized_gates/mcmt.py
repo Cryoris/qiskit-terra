@@ -213,7 +213,7 @@ class MCMTGate(ControlledGate):
         num_qubits = num_ctrl_qubits + num_target_qubits
 
         if label is None:
-            label = f"{num_target_qubits}-{self.gate.name.capitalize()}"
+            label = f"{num_target_qubits}-{gate.name.capitalize()}"
 
         super().__init__(
             "mcmt",
@@ -229,11 +229,11 @@ class MCMTGate(ControlledGate):
         """Default definition relying on gate.control. Control state is handled by superclass."""
         if self.num_target_qubits == 1:
             # no broadcasting needed (makes for better circuit diagrams)
-            broadcasted_gate = self.gate
+            broadcasted_gate = self.base_gate
         else:
             broadcasted = QuantumCircuit(self.num_target_qubits, name=self._label)
             for target in list(range(self.num_target_qubits)):
-                broadcasted.append(self.gate, [target], [])
+                broadcasted.append(self.base_gate, [target], [])
             broadcasted_gate = broadcasted.to_gate()
 
         mcmt_gate = broadcasted_gate.control(self.num_ctrl_qubits)
@@ -249,8 +249,9 @@ class MCMTGate(ControlledGate):
 
         # try getting the standard name from the string
         if isinstance(gate, str):
-            if gate in get_standard_gate_name_mapping:
-                gate = get_standard_gate_name_mapping[gate]
+            standard_gates = get_standard_gate_name_mapping()
+            if gate in standard_gates:
+                gate = standard_gates[gate]
             else:
                 raise AttributeError(
                     f"Unknown gate {gate}. Available: {list(get_standard_gate_name_mapping.keys())}"

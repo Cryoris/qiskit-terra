@@ -80,6 +80,9 @@ def _apply_v_chain(
     Returns:
         The rule for the (reversed) CCX V-chain.
     """
+    if len(ancilla_qubits) == 0:  # nothing to do!
+        return
+
     iterations = list(enumerate(range(2, len(control_qubits))))
     if not reverse:
         circuit.ccx(control_qubits[0], control_qubits[1], ancilla_qubits[0])

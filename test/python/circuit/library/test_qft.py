@@ -72,6 +72,7 @@ class TestQFT(QiskitTestCase):
         qft = QFT(num_qubits)
         if inverse:
             qft = qft.inverse()
+        print(qft.decompose().draw())
         self.assertQFTIsCorrect(qft, inverse=inverse)
 
     def test_qft_is_inverse(self):
@@ -196,10 +197,12 @@ class TestQFT(QiskitTestCase):
                 module=r"qiskit\..*",
                 message=r".*precision loss in QFT.*",
             )
+            warnings.filterwarnings("ignore", category=PendingDeprecationWarning)
             qft = QFT()
             # Even with the approximation this will trigger the warning.
             qft.num_qubits = 1080
             qft.approximation_degree = 20
+
         self.assertFalse(caught_warnings)
 
         # Short-circuit the build method so it exits after input validation, but without actually
