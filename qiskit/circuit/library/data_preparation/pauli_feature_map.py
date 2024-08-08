@@ -25,9 +25,9 @@ from ..n_local.n_local import NLocal
 from qiskit._accelerate.circuit_library import pauli_feature_map as _fast_map
 
 
-def rust_map(feature_dimension, paulis, entanglement="full"):
+def rust_map(feature_dimension, paulis, entanglement="full", reps=1):
     return QuantumCircuit._from_circuit_data(
-        _fast_map(feature_dimension, paulis=paulis, entanglement=entanglement)
+        _fast_map(feature_dimension, paulis=paulis, entanglement=entanglement, reps=reps)
     )
 
 

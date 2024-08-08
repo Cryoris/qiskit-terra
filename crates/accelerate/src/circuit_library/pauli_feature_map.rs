@@ -26,12 +26,15 @@ use crate::circuit_library::entanglement;
 
 const PI2: f64 = PI / 2.;
 
+type StandardInstruction = (StandardGate, SmallVec<[Param; 3]>, SmallVec<[Qubit; 2]>);
+
 fn pauli_evolution<'a>(
     py: Python<'a>,
     pauli: &'a str,
-    qubits: Vec<Qubit>,
+    indices: Vec<u32>,
     time: Param,
-) -> Box<dyn Iterator<Item = (StandardGate, SmallVec<[Param; 3]>, SmallVec<[Qubit; 2]>)> + 'a> {
+) -> Box<dyn Iterator<Item = StandardInstruction> + 'a> {
+    let qubits = indices.iter().map(|i| Qubit(*i)).collect_vec();
     // get pairs of (pauli, qubit) that are active, i.e. that are not the identity
     let active_paulis = pauli
         .chars()
@@ -43,11 +46,7 @@ fn pauli_evolution<'a>(
     // a Box<Iterator>, otherwise the compiler will complain that we return empty one time and
     // a chain another time
     if active_paulis.len() == 0 {
-        return Box::new(std::iter::empty::<(
-            StandardGate,
-            SmallVec<[Param; 3]>,
-            SmallVec<[Qubit; 2]>,
-        )>());
+        return Box::new(std::iter::empty::<StandardInstruction>());
     }
     // get the basis change: x -> HGate, y -> RXGate(pi/2), z -> nothing
     let basis_change = active_paulis
@@ -116,10 +115,6 @@ pub fn pauli_feature_map(
     parameter_prefix: &str,
     insert_barriers: bool,
 ) -> Result<CircuitData, PyErr> {
-    let qubits = (0..feature_dimension)
-        .map(|i| Qubit(i as u32))
-        .collect_vec();
-
     let paulis = paulis.map_or_else(
         || Ok(PyList::new_bound(py, vec!["z", "zz"])), // default list is ["z", "zz"]
         PySequenceMethods::to_list,
@@ -134,18 +129,13 @@ pub fn pauli_feature_map(
         .collect_vec();
 
     let evo = (0..reps).flat_map(|rep| {
-        pauli_strings.into_iter().flat_map(|pauli| {
+        pauli_strings.into_iter().flat_map(move |pauli| {
             let block_size = pauli.len() as u32;
             let entanglement =
                 entanglement::get_entanglement(feature_dimension, block_size, entanglement, rep)
                     .unwrap();
-            entanglement.flat_map(|indices| {
-                let block_qubits = indices
-                    .iter()
-                    .map(|index| qubits[*index as usize])
-                    .collect_vec();
-                pauli_evolution(py, pauli, block_qubits, Param::Float(1.0))
-            })
+            entanglement
+                .flat_map(move |indices| pauli_evolution(py, pauli, indices, Param::Float(1.0)))
         })
     });
     CircuitData::from_standard_gates(py, feature_dimension, evo, Param::Float(0.0))
