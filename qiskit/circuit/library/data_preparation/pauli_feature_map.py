@@ -22,6 +22,14 @@ from qiskit.circuit.library.standard_gates import HGate
 
 from ..n_local.n_local import NLocal
 
+from qiskit._accelerate.circuit_library import pauli_feature_map as _fast_map
+
+
+def rust_map(feature_dimension, paulis, entanglement="full"):
+    return QuantumCircuit._from_circuit_data(
+        _fast_map(feature_dimension, paulis=paulis, entanglement=entanglement)
+    )
+
 
 class PauliFeatureMap(NLocal):
     r"""The Pauli Expansion circuit.

@@ -35,7 +35,8 @@ from qiskit.circuit.library.standard_gates import get_standard_gate_name_mapping
 from ..blueprintcircuit import BlueprintCircuit
 
 from qiskit._accelerate.circuit_library import get_entangler_map as fast_entangler_map
-from qiskit._accelerate.circuit_library import n_local as fast_local
+
+# from qiskit._accelerate.circuit_library import n_local as fast_local
 
 if typing.TYPE_CHECKING:
     import qiskit  # pylint: disable=cyclic-import
@@ -1072,5 +1073,5 @@ def _stdlib_gate_from_simple_block(block: QuantumCircuit) -> _StdlibGateResult |
     return _StdlibGateResult(instruction.operation.base_class, len(instruction.operation.params))
 
 
-def n_local(num_qubits, entanglement):
-    return QuantumCircuit._from_circuit_data(fast_local(num_qubits, entanglement))
+# def n_local(num_qubits, entanglement):
+#     return QuantumCircuit._from_circuit_data(fast_local(num_qubits, entanglement))

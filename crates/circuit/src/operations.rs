@@ -1885,7 +1885,7 @@ fn clone_param(param: &Param, py: Python) -> Param {
     }
 }
 
-fn multiply_param(param: &Param, mult: f64, py: Python) -> Param {
+pub fn multiply_param(param: &Param, mult: f64, py: Python) -> Param {
     match param {
         Param::Float(theta) => Param::Float(theta * mult),
         Param::ParameterExpression(theta) => Param::ParameterExpression(
