@@ -1243,14 +1243,4 @@ impl<'py> FromPyObject<'py> for AssignParam {
     fn extract_bound(ob: &Bound<'py, PyAny>) -> PyResult<Self> {
         Ok(Self(Param::extract_no_coerce(ob)?))
     }
-
-    pub fn iter(&self) -> impl Iterator<Item = (&PackedInstruction, &Vec<Qubit>, &Vec<Clbit>)> {
-        self.data.iter().map(|inst| {
-            (
-                inst,
-                self.qargs_interner.intern(inst.qubits_id).value,
-                self.cargs_interner.intern(inst.clbits_id).value,
-            )
-        })
-    }
 }

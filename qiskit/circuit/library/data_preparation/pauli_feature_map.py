@@ -26,8 +26,15 @@ from qiskit._accelerate.circuit_library import pauli_feature_map as _fast_map
 
 
 def rust_map(feature_dimension, paulis, entanglement="full", reps=1):
+    parameters = ParameterVector("x", feature_dimension)
     return QuantumCircuit._from_circuit_data(
-        _fast_map(feature_dimension, paulis=paulis, entanglement=entanglement, reps=reps)
+        _fast_map(
+            feature_dimension,
+            paulis=paulis,
+            entanglement=entanglement,
+            reps=reps,
+            parameters=parameters,
+        )
     )
 
 
