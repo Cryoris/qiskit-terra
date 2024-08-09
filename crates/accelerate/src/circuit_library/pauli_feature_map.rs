@@ -166,6 +166,9 @@ fn _pauli_feature_map<'a>(
     alpha: f64,
     data_map_func: Option<&'a Bound<PyAny>>,
 ) -> impl Iterator<Item = StandardInstruction> + 'a {
+    /// Skeleton for barrier
+    /// let barrier_cls: Bound<PyAny> = imports::BARRIER.get_bound(py);
+    /// barrier_cls.call1((num_qubits,)) -> build PyInstruction -> into()
     (0..reps).flat_map(move |rep| {
         let h_layer =
             (0..feature_dimension).map(|i| (StandardGate::HGate, smallvec![], smallvec![Qubit(i)]));
