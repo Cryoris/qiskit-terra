@@ -16,7 +16,7 @@ use pyo3::{
     Bound, PyAny, PyErr,
 };
 use qiskit_circuit::slice::PySequenceIndex;
-use std::iter;
+use std::{any::Any, iter};
 
 fn _combinations(n: u32, repetitions: u32) -> Vec<Vec<u32>> {
     if repetitions == 1 {
@@ -159,7 +159,13 @@ pub fn get_entanglement<'a>(
     entanglement: &'a Bound<PyAny>,
     offset: usize,
 ) -> Result<Box<dyn Iterator<Item = Result<Vec<u32>, PyErr>> + 'a>, PyErr> {
-    let py = entanglement.py();
+    // unwrap the callable, if it is one
+    let entanglement = if entanglement.is_callable() {
+        entanglement.call1((offset,))?
+    } else {
+        entanglement.to_owned()
+    };
+
     if let Ok(strategy) = entanglement.downcast::<PyString>() {
         let as_str = strategy.to_string();
         return Ok(Box::new(
@@ -193,7 +199,7 @@ pub fn get_entanglement<'a>(
         });
         return Ok(Box::new(entanglement_iter));
     }
-    Err(QiskitError::new_err(
+    return Err(QiskitError::new_err(
         "Entanglement must be a string or list of qubit indices.",
-    ))
+    ));
 }
