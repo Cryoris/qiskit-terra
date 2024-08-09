@@ -12,12 +12,14 @@
 
 """The Pauli expansion circuit module."""
 
+from __future__ import annotations
+
 from typing import Optional, Callable, List, Union
 from functools import reduce
 import numpy as np
 
 from qiskit.circuit import QuantumCircuit
-from qiskit.circuit import Parameter, ParameterVector
+from qiskit.circuit import Parameter, ParameterVector, ParameterExpression
 from qiskit.circuit.library.standard_gates import HGate
 
 from ..n_local.n_local import NLocal
@@ -25,9 +27,19 @@ from ..n_local.n_local import NLocal
 from qiskit._accelerate.circuit_library import pauli_feature_map as _fast_map
 
 
-def rust_map(feature_dimension, paulis, entanglement="full", reps=1, data_map_func=None):
-    parameters = ParameterVector("x", feature_dimension)
-    return QuantumCircuit._from_circuit_data(
+def pauli_feature_map(
+    feature_dimension: int,
+    reps: int = 2,
+    entanglement: str = "full",
+    alpha: float = 2.0,
+    paulis: list[str] | None = None,
+    data_map_func: Callable[[Parameter], ParameterExpression] | None = None,
+    parameter_prefix: str = "x",
+    insert_barriers: bool = False,
+    name: str = "PauliFeatureMap",
+):
+    parameters = ParameterVector(parameter_prefix, feature_dimension)
+    circuit = QuantumCircuit._from_circuit_data(
         _fast_map(
             feature_dimension,
             paulis=paulis,
@@ -35,8 +47,11 @@ def rust_map(feature_dimension, paulis, entanglement="full", reps=1, data_map_fu
             reps=reps,
             parameters=parameters,
             data_map_func=data_map_func,
+            alpha=alpha,
         )
     )
+    circuit.name = name
+    return circuit
 
 
 class PauliFeatureMap(NLocal):

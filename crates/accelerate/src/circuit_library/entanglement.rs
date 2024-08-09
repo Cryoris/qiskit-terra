@@ -120,20 +120,22 @@ pub fn get_entanglement_from_str(
         )));
     }
 
-    if entanglement == "pairwise" && block_size != 2 {
+    if entanglement == "pairwise" && block_size > 2 {
         return Err(QiskitError::new_err(format!(
-            "block_size ({}) must be 2 for pairwise entanglement",
+            "block_size ({}) can be at most 2 for pairwise entanglement",
             block_size
         )));
     }
 
-    match entanglement {
-        "full" => Ok(Box::new(full(num_qubits, block_size))),
-        "linear" => Ok(Box::new(linear(num_qubits, block_size))),
-        "reverse_linear" => Ok(Box::new(reverse_linear(num_qubits, block_size))),
-        "sca" => Ok(shift_circular_alternating(num_qubits, block_size, offset)),
-        "circular" => Ok(circular(num_qubits, block_size)),
-        "pairwise" => Ok(Box::new(pairwise(num_qubits))),
+    // if block size is 2 and pairwise, this is just linear: [0, 1, 2, ...]
+    match (entanglement, block_size) {
+        ("full", _) => Ok(Box::new(full(num_qubits, block_size))),
+        ("linear", _) => Ok(Box::new(linear(num_qubits, block_size))),
+        ("reverse_linear", _) => Ok(Box::new(reverse_linear(num_qubits, block_size))),
+        ("sca", _) => Ok(shift_circular_alternating(num_qubits, block_size, offset)),
+        ("circular", _) => Ok(circular(num_qubits, block_size)),
+        ("pairwise", 1) => Ok(Box::new(linear(num_qubits, 1))),
+        ("pairwise", 2) => Ok(Box::new(pairwise(num_qubits))),
         _ => Err(QiskitError::new_err(format!(
             "Unsupported entanglement: {}",
             entanglement

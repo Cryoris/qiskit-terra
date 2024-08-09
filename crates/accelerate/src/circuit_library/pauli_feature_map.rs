@@ -90,7 +90,7 @@ fn pauli_evolution<'a>(
     // get the RZ gate on the last qubit
     let last_qubit = active_paulis.last().unwrap().1;
     let z_rotation = std::iter::once((
-        StandardGate::RZGate,
+        StandardGate::PhaseGate,
         smallvec![multiply_param(&time, 2.0, py)],
         smallvec![last_qubit],
     ));
@@ -167,7 +167,9 @@ fn _pauli_feature_map<'a>(
     data_map_func: Option<&'a Bound<PyAny>>,
 ) -> impl Iterator<Item = StandardInstruction> + 'a {
     (0..reps).flat_map(move |rep| {
-        pauli_strings.into_iter().flat_map(move |pauli| {
+        let h_layer =
+            (0..feature_dimension).map(|i| (StandardGate::HGate, smallvec![], smallvec![Qubit(i)]));
+        let evo = pauli_strings.into_iter().flat_map(move |pauli| {
             let block_size = pauli.len() as u32;
             let entanglement =
                 entanglement::get_entanglement(feature_dimension, block_size, entanglement, rep)
@@ -195,7 +197,8 @@ fn _pauli_feature_map<'a>(
                     multiply_param(&angle, alpha, py),
                 )
             })
-        })
+        });
+        h_layer.chain(evo)
     })
 }
 
