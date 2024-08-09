@@ -24,6 +24,8 @@ use std::f64::consts::PI;
 
 use crate::circuit_library::entanglement;
 
+use super::get_entangler_map;
+
 const PI2: f64 = PI / 2.;
 
 type StandardInstruction = (StandardGate, SmallVec<[Param; 3]>, SmallVec<[Qubit; 2]>);
@@ -103,17 +105,18 @@ fn pauli_evolution<'a>(
 // TODO add: data_map_func: Optional[Callable[[np.ndarray], float]] = None,
 // TODO let entanglement be a list
 #[pyfunction]
-#[pyo3(signature = (feature_dimension, parameters, *, reps=1, entanglement="full", paulis=None, alpha=2.0, insert_barriers=false ))]
+#[pyo3(signature = (feature_dimension, parameters, *, reps=1, entanglement=None, paulis=None, alpha=2.0, insert_barriers=false ))]
 pub fn pauli_feature_map(
     py: Python,
     feature_dimension: u32,
     parameters: Bound<PyAny>,
     reps: usize,
-    entanglement: &str,
+    entanglement: Option<&Bound<PyAny>>,
     paulis: Option<&Bound<PySequence>>,
     alpha: f64,
     insert_barriers: bool,
 ) -> Result<CircuitData, PyErr> {
+    // normalize the Pauli strings to a Vec<String>
     let paulis = paulis.map_or_else(
         || Ok(PyList::new_bound(py, vec!["z", "zz"])), // default list is ["z", "zz"]
         PySequenceMethods::to_list,
@@ -127,16 +130,21 @@ pub fn pauli_feature_map(
         })
         .collect_vec();
 
+    // set the default value for entanglement
+    let default = PyString::new_bound(py, "full");
+    let entanglement = entanglement.unwrap_or(&default);
+
+    // extract the parameters from the input variable ``parameters``
     let parameter_vector = parameters
         .iter()?
         .map(|el| Param::extract_no_coerce(&el.expect("no idea man")).unwrap())
         .collect_vec();
 
-    let evo = _get_evolution(
+    let evo = _pauli_feature_map(
         py,
         feature_dimension,
         pauli_strings,
-        entanglement,
+        &entanglement,
         &parameter_vector,
         reps,
     );
@@ -147,7 +155,7 @@ fn _pauli_feature_map<'a>(
     py: Python<'a>,
     feature_dimension: u32,
     pauli_strings: &'a Vec<String>,
-    entanglement: &'a str,
+    entanglement: &'a Bound<PyAny>,
     parameter_vector: &'a Vec<Param>,
     reps: usize,
 ) -> impl Iterator<Item = StandardInstruction> + 'a {
@@ -158,8 +166,8 @@ fn _pauli_feature_map<'a>(
                 entanglement::get_entanglement(feature_dimension, block_size, entanglement, rep)
                     .unwrap();
             entanglement.flat_map(move |indices| {
-                let angle = _default_reduce(py, parameter_vector, &indices);
-                pauli_evolution(py, pauli, indices, angle)
+                let angle = _default_reduce(py, parameter_vector, &indices.as_ref().unwrap());
+                pauli_evolution(py, pauli, indices.unwrap(), angle)
             })
         })
     })

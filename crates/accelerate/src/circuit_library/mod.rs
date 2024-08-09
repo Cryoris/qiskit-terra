@@ -26,7 +26,7 @@ pub fn get_entangler_map<'py>(
     entanglement: &str,
     offset: usize,
 ) -> PyResult<Vec<Bound<'py, PyTuple>>> {
-    match entanglement::get_entanglement(num_qubits, block_size, entanglement, offset) {
+    match entanglement::get_entanglement_from_str(num_qubits, block_size, entanglement, offset) {
         Ok(entanglement) => Ok(entanglement
             .into_iter()
             .map(|vec| PyTuple::new_bound(py, vec))

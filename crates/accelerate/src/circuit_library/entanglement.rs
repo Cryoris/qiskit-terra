@@ -11,7 +11,10 @@
 // that they have been altered from the originals.
 
 use crate::QiskitError;
-use pyo3::PyErr;
+use pyo3::{
+    types::{PyAnyMethods, PyInt, PyList, PyListMethods, PyString},
+    Bound, PyAny, PyErr,
+};
 use qiskit_circuit::slice::PySequenceIndex;
 use std::iter;
 
@@ -97,14 +100,14 @@ pub fn shift_circular_alternating(
 /// Args:
 ///     num_qubits: The number of qubits of the circuit.
 ///     block_size: The number of qubits of the entangling block.
-///     entanglement: The entanglement strategy.
+///     entanglement: The entanglement strategy as string.
 ///     offset: The block offset, can be used if the entanglements differ per block,
 ///         for example used in the "sca" mode.
 ///
 /// Returns:
 ///     The entangler map using mode ``entanglement`` to scatter a block of ``block_size``
 ///     qubits on ``num_qubits`` qubits.
-pub fn get_entanglement(
+pub fn get_entanglement_from_str(
     num_qubits: u32,
     block_size: u32,
     entanglement: &str,
@@ -136,4 +139,61 @@ pub fn get_entanglement(
             entanglement
         ))),
     }
+}
+
+/// Get an entangler map for an arbitrary number of qubits.
+///
+/// Args:
+///     num_qubits: The number of qubits of the circuit.
+///     block_size: The number of qubits of the entangling block.
+///     entanglement: The entanglement strategy.
+///     offset: The block offset, can be used if the entanglements differ per block,
+///         for example used in the "sca" mode.
+///
+/// Returns:
+///     The entangler map using mode ``entanglement`` to scatter a block of ``block_size``
+///     qubits on ``num_qubits`` qubits.
+pub fn get_entanglement<'a>(
+    num_qubits: u32,
+    block_size: u32,
+    entanglement: &'a Bound<PyAny>,
+    offset: usize,
+) -> Result<Box<dyn Iterator<Item = Result<Vec<u32>, PyErr>> + 'a>, PyErr> {
+    let py = entanglement.py();
+    if let Ok(strategy) = entanglement.downcast::<PyString>() {
+        let as_str = strategy.to_string();
+        return Ok(Box::new(
+            get_entanglement_from_str(num_qubits, block_size, as_str.as_str(), offset)
+                .unwrap()
+                .map(|connections| Ok(connections)),
+        ));
+        // } else if Ok(list) = entanglement.downcast::<PyList>() {
+        // get_entanglement_from_str(num_qubits, block_size, "full", offset)
+    } else if let Ok(list) = entanglement.downcast::<PyList>() {
+        let entanglement_iter = list.iter().map(move |el| {
+            let connections: Vec<u32> = el
+                .downcast::<PyList>()
+                .expect("Entanglement must be a string of list of list.")
+                .iter()
+                .map(|index| {
+                    index
+                        .downcast::<PyInt>()
+                        .expect("Entanglement indices must be castable to u32.")
+                        .extract()
+                        .expect("Failed to extract index.")
+                })
+                .collect();
+            if connections.len() != block_size as usize {
+                return Err(QiskitError::new_err(format!(
+                    "Entanglement {:?} does not match block size {}",
+                    connections, block_size
+                )));
+            }
+            Ok(connections)
+        });
+        return Ok(Box::new(entanglement_iter));
+    }
+    Err(QiskitError::new_err(
+        "Entanglement must be a string or list of qubit indices.",
+    ))
 }
