@@ -199,7 +199,7 @@ pub fn get_entanglement<'a>(
         });
         return Ok(Box::new(entanglement_iter));
     }
-    return Err(QiskitError::new_err(
+    Err(QiskitError::new_err(
         "Entanglement must be a string or list of qubit indices.",
-    ));
+    ))
 }

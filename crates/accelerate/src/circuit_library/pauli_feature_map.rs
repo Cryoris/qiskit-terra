@@ -19,10 +19,12 @@ use pyo3::PyErr;
 use qiskit_circuit::circuit_data::CircuitData;
 use qiskit_circuit::operations::{add_param, multiply_param, rmultiply_param, Param, StandardGate};
 use qiskit_circuit::Qubit;
+use rustworkx_core::petgraph::data;
 use smallvec::{smallvec, SmallVec};
 use std::f64::consts::PI;
 
 use crate::circuit_library::entanglement;
+use crate::QiskitError;
 
 use super::get_entangler_map;
 
@@ -105,7 +107,7 @@ fn pauli_evolution<'a>(
 // TODO add: data_map_func: Optional[Callable[[np.ndarray], float]] = None,
 // TODO let entanglement be a list
 #[pyfunction]
-#[pyo3(signature = (feature_dimension, parameters, *, reps=1, entanglement=None, paulis=None, alpha=2.0, insert_barriers=false ))]
+#[pyo3(signature = (feature_dimension, parameters, *, reps=1, entanglement=None, paulis=None, alpha=2.0, insert_barriers=false, data_map_func=None))]
 pub fn pauli_feature_map(
     py: Python,
     feature_dimension: u32,
@@ -115,6 +117,7 @@ pub fn pauli_feature_map(
     paulis: Option<&Bound<PySequence>>,
     alpha: f64,
     insert_barriers: bool,
+    data_map_func: Option<&Bound<PyAny>>,
 ) -> Result<CircuitData, PyErr> {
     // normalize the Pauli strings to a Vec<String>
     let paulis = paulis.map_or_else(
@@ -147,6 +150,8 @@ pub fn pauli_feature_map(
         &entanglement,
         &parameter_vector,
         reps,
+        alpha,
+        data_map_func,
     );
     CircuitData::from_standard_gates(py, feature_dimension, evo, Param::Float(0.0))
 }
@@ -158,6 +163,8 @@ fn _pauli_feature_map<'a>(
     entanglement: &'a Bound<PyAny>,
     parameter_vector: &'a Vec<Param>,
     reps: usize,
+    alpha: f64,
+    data_map_func: Option<&'a Bound<PyAny>>,
 ) -> impl Iterator<Item = StandardInstruction> + 'a {
     (0..reps).flat_map(move |rep| {
         pauli_strings.into_iter().flat_map(move |pauli| {
@@ -166,19 +173,34 @@ fn _pauli_feature_map<'a>(
                 entanglement::get_entanglement(feature_dimension, block_size, entanglement, rep)
                     .unwrap();
             entanglement.flat_map(move |indices| {
-                let angle = _default_reduce(py, parameter_vector, &indices.as_ref().unwrap());
-                pauli_evolution(py, pauli, indices.unwrap(), angle)
+                // TODO custom reduce function
+                let active_parameters = indices
+                    .as_ref()
+                    .unwrap()
+                    .into_iter()
+                    .map(|i| parameter_vector[*i as usize].clone())
+                    .collect();
+                let angle = match data_map_func {
+                    Some(fun) => fun
+                        .call1((active_parameters,))
+                        .expect("Failed running ``data_map_func`` Python-side.")
+                        .extract()
+                        .expect("Failed retrieving the Param"),
+                    None => _default_reduce(py, active_parameters),
+                };
+                pauli_evolution(
+                    py,
+                    pauli,
+                    indices.unwrap(),
+                    multiply_param(&angle, alpha, py),
+                )
             })
         })
     })
 }
 
-fn _default_reduce(py: Python, parameters: &Vec<Param>, indices: &Vec<u32>) -> Param {
-    indices.iter().fold(Param::Float(1.0), |acc, i| {
-        rmultiply_param(
-            acc,
-            add_param(&multiply_param(&parameters[*i as usize], -1.0, py), PI, py),
-            py,
-        )
+fn _default_reduce<'a>(py: Python<'a>, parameters: Vec<Param>) -> Param {
+    parameters.iter().fold(Param::Float(1.0), |acc, param| {
+        rmultiply_param(acc, add_param(&multiply_param(param, -1.0, py), PI, py), py)
     })
 }
