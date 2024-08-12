@@ -31,12 +31,10 @@ from qiskit.circuit import (
 )
 from qiskit.exceptions import QiskitError
 from qiskit.circuit.library.standard_gates import get_standard_gate_name_mapping
+from qiskit._accelerate.circuit_library import get_entangler_map as fast_entangler_map
 
 from ..blueprintcircuit import BlueprintCircuit
 
-from qiskit._accelerate.circuit_library import get_entangler_map as fast_entangler_map
-
-# from qiskit._accelerate.circuit_library import n_local as fast_local
 
 if typing.TYPE_CHECKING:
     import qiskit  # pylint: disable=cyclic-import

@@ -20,17 +20,12 @@ use qiskit_circuit::circuit_data::CircuitData;
 use qiskit_circuit::imports;
 use qiskit_circuit::operations::PyInstruction;
 use qiskit_circuit::operations::{add_param, multiply_param, rmultiply_param, Param, StandardGate};
-use qiskit_circuit::packed_instruction::PackedInstruction;
 use qiskit_circuit::packed_instruction::PackedOperation;
 use qiskit_circuit::{Clbit, Qubit};
-use rustworkx_core::petgraph::data;
 use smallvec::{smallvec, SmallVec};
 use std::f64::consts::PI;
 
 use crate::circuit_library::entanglement;
-use crate::QiskitError;
-
-use super::get_entangler_map;
 
 const PI2: f64 = PI / 2.;
 

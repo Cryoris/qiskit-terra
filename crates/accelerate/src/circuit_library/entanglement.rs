@@ -12,11 +12,11 @@
 
 use crate::QiskitError;
 use pyo3::{
-    types::{PyAnyMethods, PyInt, PyList, PyListMethods, PyString},
-    Bound, PyAny, PyErr,
+    types::{PyAnyMethods, PyInt, PyList, PyListMethods, PyString, PyTuple},
+    Bound, PyAny, PyResult,
 };
 use qiskit_circuit::slice::PySequenceIndex;
-use std::{any::Any, iter};
+use std::iter;
 
 fn _combinations(n: u32, repetitions: u32) -> Vec<Vec<u32>> {
     if repetitions == 1 {
@@ -80,9 +80,10 @@ pub fn shift_circular_alternating(
     offset: usize,
 ) -> Box<dyn Iterator<Item = Vec<u32>>> {
     // index at which we split the circular iterator
+    let length = num_qubits - block_size + 2;
     let split =
-        PySequenceIndex::convert_idx(-(offset as isize), (num_qubits - block_size + 2) as usize)
-            .unwrap();
+        PySequenceIndex::convert_idx(-((offset % length as usize) as isize), length as usize)
+            .expect("Something went wrong converting the offset to a negative index.");
     let shifted = circular(num_qubits, block_size)
         .skip(split)
         .chain(circular(num_qubits, block_size).take(split));
@@ -112,7 +113,7 @@ pub fn get_entanglement_from_str(
     block_size: u32,
     entanglement: &str,
     offset: usize,
-) -> Result<Box<dyn Iterator<Item = Vec<u32>>>, PyErr> {
+) -> PyResult<Box<dyn Iterator<Item = Vec<u32>>>> {
     if block_size > num_qubits {
         return Err(QiskitError::new_err(format!(
             "block_size ({}) cannot be larger than number of qubits ({})",
@@ -160,7 +161,7 @@ pub fn get_entanglement<'a>(
     block_size: u32,
     entanglement: &'a Bound<PyAny>,
     offset: usize,
-) -> Result<Box<dyn Iterator<Item = Result<Vec<u32>, PyErr>> + 'a>, PyErr> {
+) -> PyResult<Box<dyn Iterator<Item = PyResult<Vec<u32>>> + 'a>> {
     // unwrap the callable, if it is one
     let entanglement = if entanglement.is_callable() {
         entanglement.call1((offset,))?
@@ -171,8 +172,7 @@ pub fn get_entanglement<'a>(
     if let Ok(strategy) = entanglement.downcast::<PyString>() {
         let as_str = strategy.to_string();
         return Ok(Box::new(
-            get_entanglement_from_str(num_qubits, block_size, as_str.as_str(), offset)
-                .unwrap()
+            get_entanglement_from_str(num_qubits, block_size, as_str.as_str(), offset)?
                 .map(|connections| Ok(connections)),
         ));
         // } else if Ok(list) = entanglement.downcast::<PyList>() {
@@ -180,18 +180,21 @@ pub fn get_entanglement<'a>(
     } else if let Ok(list) = entanglement.downcast::<PyList>() {
         let entanglement_iter = list.iter().map(move |el| {
             let connections: Vec<u32> = el
-                .downcast::<PyList>()
-                .expect("Entanglement must be a string of list of list.")
-                .iter()
+                .downcast::<PyTuple>()
+                .expect("Entanglement must be list of tuples")
+                .iter()?
                 .map(|index| {
                     index
+                        .expect("Failed to get index from entanglement tuple.")
                         .downcast::<PyInt>()
                         .expect("Entanglement indices must be castable to u32.")
                         .extract()
                         .expect("Failed to extract index.")
                 })
                 .collect();
+
             if connections.len() != block_size as usize {
+                // TODO this error panicks and is not properly raised
                 return Err(QiskitError::new_err(format!(
                     "Entanglement {:?} does not match block size {}",
                     connections, block_size

@@ -18,19 +18,24 @@ mod entanglement;
 mod pauli_feature_map;
 
 #[pyfunction]
-#[pyo3(signature = (block_size, num_qubits, entanglement, offset))]
+#[pyo3(signature = (block_size, num_qubits, entanglement, offset=0))]
 pub fn get_entangler_map<'py>(
     py: Python<'py>,
     block_size: u32,
     num_qubits: u32,
-    entanglement: &str,
+    entanglement: &Bound<PyAny>,
     offset: usize,
 ) -> PyResult<Vec<Bound<'py, PyTuple>>> {
-    match entanglement::get_entanglement_from_str(num_qubits, block_size, entanglement, offset) {
+    match entanglement::get_entanglement(num_qubits, block_size, entanglement, offset) {
         Ok(entanglement) => Ok(entanglement
             .into_iter()
-            .map(|vec| PyTuple::new_bound(py, vec))
+            .map(|vec| PyTuple::new_bound(py, vec.expect("Failed to construct the entanglement.")))
             .collect()),
+        // Ok(entanglement) => Ok(entanglement
+        //     .into_iter()
+        //     .map(|vec| PyTuple::new_bound(py, vec?))
+        //     // .map(|vec| PyTuple::new_bound(py, vec.expect("Failed to construct the entanglement.")))
+        //     .collect()),
         Err(e) => Err(e),
     }
 }
