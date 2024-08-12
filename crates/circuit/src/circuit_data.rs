@@ -130,7 +130,14 @@ impl CircuitData {
         global_phase: Param,
     ) -> PyResult<Self>
     where
-        I: IntoIterator<Item = (PackedOperation, &[Param], &[Qubit], &[Clbit])>,
+        I: IntoIterator<
+            Item = (
+                PackedOperation,
+                SmallVec<[Param; 3]>,
+                Vec<Qubit>,
+                Vec<Clbit>,
+            ),
+        >,
     {
         let instruction_iter = instructions.into_iter();
         let mut res = Self::with_capacity(
@@ -142,10 +149,10 @@ impl CircuitData {
         )?;
         for (operation, params, qargs, cargs) in instruction_iter {
             let qubits = (&mut res.qargs_interner)
-                .intern(InternerKey::Value(qargs.to_vec()))?
+                .intern(InternerKey::Value(qargs))?
                 .index;
             let clbits = (&mut res.cargs_interner)
-                .intern(InternerKey::Value(qargs.to_vec()))?
+                .intern(InternerKey::Value(cargs))?
                 .index;
             let params = (!params.is_empty()).then(|| Box::new(params));
             res.data.push(PackedInstruction {
