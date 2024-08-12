@@ -17,8 +17,12 @@ use pyo3::types::PySequence;
 use pyo3::types::PyString;
 use pyo3::PyErr;
 use qiskit_circuit::circuit_data::CircuitData;
+use qiskit_circuit::imports;
+use qiskit_circuit::operations::PyInstruction;
 use qiskit_circuit::operations::{add_param, multiply_param, rmultiply_param, Param, StandardGate};
-use qiskit_circuit::Qubit;
+use qiskit_circuit::packed_instruction::PackedInstruction;
+use qiskit_circuit::packed_instruction::PackedOperation;
+use qiskit_circuit::{Clbit, Qubit};
 use rustworkx_core::petgraph::data;
 use smallvec::{smallvec, SmallVec};
 use std::f64::consts::PI;
@@ -30,6 +34,12 @@ use super::get_entangler_map;
 
 const PI2: f64 = PI / 2.;
 
+type Instruction = (
+    PackedOperation,
+    SmallVec<[Param; 3]>,
+    Vec<Qubit>,
+    Vec<Clbit>,
+);
 type StandardInstruction = (StandardGate, SmallVec<[Param; 3]>, SmallVec<[Qubit; 2]>);
 
 fn pauli_evolution<'a>(
@@ -91,7 +101,7 @@ fn pauli_evolution<'a>(
     let last_qubit = active_paulis.last().unwrap().1;
     let z_rotation = std::iter::once((
         StandardGate::PhaseGate,
-        smallvec![multiply_param(&time, 2.0, py)],
+        smallvec![multiply_param(&time, 1.0, py)],
         smallvec![last_qubit],
     ));
     // and finally chain everything together
@@ -143,7 +153,7 @@ pub fn pauli_feature_map(
         .map(|el| Param::extract_no_coerce(&el.expect("no idea man")).unwrap())
         .collect_vec();
 
-    let evo = _pauli_feature_map(
+    let packed_evo = _pauli_feature_map(
         py,
         feature_dimension,
         pauli_strings,
@@ -152,8 +162,13 @@ pub fn pauli_feature_map(
         reps,
         alpha,
         data_map_func,
+        insert_barriers,
     );
-    CircuitData::from_standard_gates(py, feature_dimension, evo, Param::Float(0.0))
+    // CircuitData::from_standard_gates(py, feature_dimension, evo, Param::Float(0.0))
+    // let cargs: Vec<Clbit> = Vec::new();
+    // let packed_evo =
+    //     evo.map(|(inst, params, qargs)| (inst.into(), params, qargs.to_vec(), cargs.clone()));
+    CircuitData::from_packed_operations(py, feature_dimension, 0, packed_evo, Param::Float(0.0))
 }
 
 fn _pauli_feature_map<'a>(
@@ -165,20 +180,48 @@ fn _pauli_feature_map<'a>(
     reps: usize,
     alpha: f64,
     data_map_func: Option<&'a Bound<PyAny>>,
-) -> impl Iterator<Item = StandardInstruction> + 'a {
-    /// Skeleton for barrier
-    /// let barrier_cls: Bound<PyAny> = imports::BARRIER.get_bound(py);
-    /// barrier_cls.call1((num_qubits,)) -> build PyInstruction -> into()
+    insert_barriers: bool,
+) -> impl Iterator<Item = Instruction> + 'a {
+    // ) -> impl Iterator<Item = Instruction> + 'a {
+    // Skeleton for barrier
+    // let barrier_cls: Bound<PyAny> = imports::BARRIER.get_bound(py);
+    // barrier_cls.call1((num_qubits,)) -> build PyInstruction -> into()
+    let barrier_cls = imports::BARRIER.get_bound(py);
+    let barrier = barrier_cls
+        .call1((feature_dimension,))
+        .expect("Could not create Barrier Python-side");
+    let barrier_inst = PyInstruction {
+        qubits: feature_dimension,
+        clbits: 0,
+        params: 0,
+        op_name: "barrier".to_string(),
+        control_flow: false,
+        instruction: barrier.into(),
+    };
+    let packed_barrier = (
+        barrier_inst.into(),
+        smallvec![],
+        (0..feature_dimension).map(|i| Qubit(i)).collect(),
+        vec![] as Vec<Clbit>,
+    );
+
     (0..reps).flat_map(move |rep| {
-        let h_layer =
-            (0..feature_dimension).map(|i| (StandardGate::HGate, smallvec![], smallvec![Qubit(i)]));
+        let h_layer = (0..feature_dimension).map(|i| {
+            (
+                StandardGate::HGate.into(),
+                smallvec![],
+                vec![Qubit(i)],
+                vec![] as Vec<Clbit>,
+            )
+        });
         let evo = pauli_strings.into_iter().flat_map(move |pauli| {
             let block_size = pauli.len() as u32;
             let entanglement =
                 entanglement::get_entanglement(feature_dimension, block_size, entanglement, rep)
                     .unwrap();
             entanglement.flat_map(move |indices| {
-                // TODO custom reduce function
+                // get the parameters the evolution is acting on and the corresponding angle,
+                // which is given by the data_map_func (we provide a default if not given)
                 let active_parameters = indices
                     .as_ref()
                     .unwrap()
@@ -193,20 +236,44 @@ fn _pauli_feature_map<'a>(
                         .expect("Failed retrieving the Param"),
                     None => _default_reduce(py, active_parameters),
                 };
+
+                // Get the pauli evolution and map it into
+                //   (PackedOperation, SmallVec<[Params; 3]>, Vec<Qubit>, Vec<Clbit>)
+                // to call CircuitData::from_packed_operations. This is needed since we might
+                // have to interject barriers, which are not a standard gate and prevents us
+                // from using CircuitData::from_standard_gates.
                 pauli_evolution(
                     py,
                     pauli,
                     indices.unwrap(),
                     multiply_param(&angle, alpha, py),
                 )
+                .map(|(gate, params, qargs)| {
+                    (gate.into(), params, qargs.to_vec(), vec![] as Vec<Clbit>)
+                })
             })
         });
-        h_layer.chain(evo)
+
+        // Chain the H layer and evolution together, adding barriers around the evolutions,
+        // if necessary. Note that in the last repetition, there's no barrier after the evolution.
+        let mut out: Box<dyn Iterator<Item = Instruction>> = Box::new(h_layer);
+        if insert_barriers {
+            out = Box::new(out.chain(std::iter::once(packed_barrier.clone())));
+        }
+        out = Box::new(out.chain(evo));
+        if insert_barriers && rep < reps - 1 {
+            out = Box::new(out.chain(std::iter::once(packed_barrier.clone())));
+        }
+        out
     })
 }
 
 fn _default_reduce<'a>(py: Python<'a>, parameters: Vec<Param>) -> Param {
-    parameters.iter().fold(Param::Float(1.0), |acc, param| {
-        rmultiply_param(acc, add_param(&multiply_param(param, -1.0, py), PI, py), py)
-    })
+    if parameters.len() == 1 {
+        parameters[0].clone()
+    } else {
+        parameters.iter().fold(Param::Float(1.0), |acc, param| {
+            rmultiply_param(acc, add_param(&multiply_param(param, -1.0, py), PI, py), py)
+        })
+    }
 }
