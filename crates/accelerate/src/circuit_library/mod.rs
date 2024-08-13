@@ -26,16 +26,17 @@ pub fn get_entangler_map<'py>(
     entanglement: &Bound<PyAny>,
     offset: usize,
 ) -> PyResult<Vec<Bound<'py, PyTuple>>> {
+    // The entanglement is Result<impl Iterator<Item = Result<Vec<u32>>>>, so there's two
+    // levels of errors we must handle: the outer error is handled by the outer match statement,
+    // and the inner (Result<Vec<u32>>) is handled upon the PyTuple creation.
     match entanglement::get_entanglement(num_qubits, block_size, entanglement, offset) {
-        Ok(entanglement) => Ok(entanglement
+        Ok(entanglement) => entanglement
             .into_iter()
-            .map(|vec| PyTuple::new_bound(py, vec.expect("Failed to construct the entanglement.")))
-            .collect()),
-        // Ok(entanglement) => Ok(entanglement
-        //     .into_iter()
-        //     .map(|vec| PyTuple::new_bound(py, vec?))
-        //     // .map(|vec| PyTuple::new_bound(py, vec.expect("Failed to construct the entanglement.")))
-        //     .collect()),
+            .map(|vec| match vec {
+                Ok(vec) => Ok(PyTuple::new_bound(py, vec)),
+                Err(e) => Err(e),
+            })
+            .collect::<Result<Vec<_>, _>>(),
         Err(e) => Err(e),
     }
 }

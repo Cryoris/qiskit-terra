@@ -175,26 +175,16 @@ pub fn get_entanglement<'a>(
             get_entanglement_from_str(num_qubits, block_size, as_str.as_str(), offset)?
                 .map(|connections| Ok(connections)),
         ));
-        // } else if Ok(list) = entanglement.downcast::<PyList>() {
-        // get_entanglement_from_str(num_qubits, block_size, "full", offset)
     } else if let Ok(list) = entanglement.downcast::<PyList>() {
         let entanglement_iter = list.iter().map(move |el| {
-            let connections: Vec<u32> = el
+            let connections = el
                 .downcast::<PyTuple>()
-                .expect("Entanglement must be list of tuples")
+                .expect("Entanglement must be list of tuples") // clearer error message than `?`
                 .iter()?
-                .map(|index| {
-                    index
-                        .expect("Failed to get index from entanglement tuple.")
-                        .downcast::<PyInt>()
-                        .expect("Entanglement indices must be castable to u32.")
-                        .extract()
-                        .expect("Failed to extract index.")
-                })
-                .collect();
+                .map(|index| index?.downcast::<PyInt>()?.extract())
+                .collect::<Result<Vec<u32>, _>>()?;
 
             if connections.len() != block_size as usize {
-                // TODO this error panicks and is not properly raised
                 return Err(QiskitError::new_err(format!(
                     "Entanglement {:?} does not match block size {}",
                     connections, block_size
