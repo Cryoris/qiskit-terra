@@ -48,6 +48,7 @@ def pauli_feature_map(
             parameters=parameters,
             data_map_func=data_map_func,
             alpha=alpha,
+            insert_barriers=insert_barriers,
         )
     )
     circuit.name = name

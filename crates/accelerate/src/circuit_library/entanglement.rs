@@ -16,7 +16,6 @@ use pyo3::{
     Bound, PyAny, PyResult,
 };
 use qiskit_circuit::slice::PySequenceIndex;
-use std::iter;
 
 fn _combinations(n: u32, repetitions: u32) -> Vec<Vec<u32>> {
     if repetitions == 1 {
@@ -52,18 +51,20 @@ pub fn reverse_linear(num_qubits: u32, block_size: u32) -> impl Iterator<Item = 
     linear(num_qubits, block_size).rev()
 }
 
-/// Return the qubit indices for linear entanglement.
-/// For a block_size of ``m`` on ``n`` qubits, this is defined as
-/// [(0..m-1), (1..m), (2..m+1), ..., (n-m..n-1), (n-m+1, ..., n-1, 0)]
+/// Return the qubit indices for circular entanglement. This is defined as tuples of length ``m``
+/// starting at each possible index ``(0..n)``. Historically, Qiskit starts with index ``n-m+1``.
+/// This is probably easiest understood for a concerete example of 4 qubits and block size 3:
+/// [(2,3,0), (3,0,1), (0,1,2), (1,2,3)]
 pub fn circular(num_qubits: u32, block_size: u32) -> Box<dyn Iterator<Item = Vec<u32>>> {
     if block_size == 1 || num_qubits == block_size {
         Box::new(linear(num_qubits, block_size))
     } else {
-        // linear(num_qubits, block_size)
-        let closing_link = (num_qubits - block_size + 1..num_qubits)
-            .chain(iter::once(0))
-            .collect();
-        Box::new(iter::once(closing_link).chain(linear(num_qubits, block_size)))
+        let historic_offset = num_qubits - block_size + 1;
+        Box::new((0..num_qubits).map(move |start_index| {
+            (0..block_size)
+                .map(|i| (historic_offset + start_index + i) % num_qubits)
+                .collect()
+        }))
     }
 }
 
@@ -79,11 +80,13 @@ pub fn shift_circular_alternating(
     block_size: u32,
     offset: usize,
 ) -> Box<dyn Iterator<Item = Vec<u32>>> {
-    // index at which we split the circular iterator
-    let length = num_qubits - block_size + 2;
-    let split =
-        PySequenceIndex::convert_idx(-((offset % length as usize) as isize), length as usize)
-            .expect("Something went wrong converting the offset to a negative index.");
+    // index at which we split the circular iterator -- remember that circular entanglement is a
+    // list of length ``num_qubits``, which is what we use in the ``convert_idx`` function here
+    let split = PySequenceIndex::convert_idx(
+        -((offset % num_qubits as usize) as isize),
+        num_qubits as usize,
+    )
+    .expect("Something went wrong converting the offset to a negative index.");
     let shifted = circular(num_qubits, block_size)
         .skip(split)
         .chain(circular(num_qubits, block_size).take(split));

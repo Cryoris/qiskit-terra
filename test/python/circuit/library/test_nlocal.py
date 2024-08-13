@@ -343,7 +343,7 @@ class TestNLocal(QiskitTestCase):
                     (2, 3, 4),
                 ]
             else:
-                circular = [(3, 4, 0), (0, 1, 2), (1, 2, 3), (2, 3, 4)]
+                circular = [(3, 4, 0), (4, 0, 1), (0, 1, 2), (1, 2, 3), (2, 3, 4)]
                 if mode == "circular":
                     return circular
                 sca = circular[-rep_num:] + circular[:-rep_num]
@@ -954,7 +954,7 @@ class TestEntanglement(QiskitTestCase):
     @data(
         ("linear", [(0, 1, 2), (1, 2, 3)]),
         ("reverse_linear", [(1, 2, 3), (0, 1, 2)]),
-        ("circular", [(2, 3, 0), (0, 1, 2), (1, 2, 3)]),  # should this include (3, 0, 2)??
+        ("circular", [(2, 3, 0), (3, 0, 1), (0, 1, 2), (1, 2, 3)]),
         ("full", [(0, 1, 2), (0, 1, 3), (0, 2, 3), (1, 2, 3)]),
     )
     @unpack
@@ -965,8 +965,8 @@ class TestEntanglement(QiskitTestCase):
         )
         self.assertEqual(expected, entanglement)
 
-    def test_sca(self):
-        """Test shift, circular, alternating."""
+    def test_2q_sca(self):
+        """Test shift, circular, alternating on 2-qubit blocks."""
         expected = {  # offset: result
             0: [(3, 0), (0, 1), (1, 2), (2, 3)],
             1: [(3, 2), (0, 3), (1, 0), (2, 1)],
@@ -979,6 +979,19 @@ class TestEntanglement(QiskitTestCase):
                     num_qubits=4, block_size=2, entanglement="sca", offset=offset
                 )
                 self.assertEqual(expected[offset % 4], entanglement)
+
+    def test_3q_sca(self):
+        """Test shift, circular, alternating on 3-qubit blocks."""
+        circular = [(2, 3, 0), (3, 0, 1), (0, 1, 2), (1, 2, 3)]
+        for offset in range(8):
+            expected = circular[-(offset % 4) :] + circular[: -(offset % 4)]
+            if offset % 2 == 1:
+                expected = [tuple(reversed(indices)) for indices in expected]
+            with self.subTest(offset=offset):
+                entanglement = fast_entangler_map(
+                    num_qubits=4, block_size=3, entanglement="sca", offset=offset
+                )
+                self.assertEqual(expected, entanglement)
 
     def test_pairwise_limit(self):
         """Test pairwise raises an error above 2 qubits."""
