@@ -12,10 +12,8 @@
 
 use itertools::Itertools;
 use pyo3::prelude::*;
-use pyo3::types::PyList;
 use pyo3::types::PySequence;
 use pyo3::types::PyString;
-use pyo3::PyErr;
 use qiskit_circuit::circuit_data::CircuitData;
 use qiskit_circuit::imports;
 use qiskit_circuit::operations::PyInstruction;
@@ -26,6 +24,7 @@ use smallvec::{smallvec, SmallVec};
 use std::f64::consts::PI;
 
 use crate::circuit_library::entanglement;
+use crate::QiskitError;
 
 const PI2: f64 = PI / 2.;
 
@@ -45,8 +44,11 @@ fn pauli_evolution<'a>(
 ) -> Box<dyn Iterator<Item = StandardInstruction> + 'a> {
     let qubits = indices.iter().map(|i| Qubit(*i)).collect_vec();
     // get pairs of (pauli, qubit) that are active, i.e. that are not the identity
-    let active_paulis = pauli
+    let binding = pauli.to_lowercase(); // lowercase for convenience
+    let active_paulis = binding
+        .as_str()
         .chars()
+        .rev() // reverse due to Qiskit's bit ordering convention
         .zip(qubits)
         .filter(|(p, _)| *p != 'i')
         .collect_vec();
@@ -109,8 +111,6 @@ fn pauli_evolution<'a>(
     )
 }
 
-// TODO add: data_map_func: Optional[Callable[[np.ndarray], float]] = None,
-// TODO let entanglement be a list
 #[pyfunction]
 #[pyo3(signature = (feature_dimension, parameters, *, reps=1, entanglement=None, paulis=None, alpha=2.0, insert_barriers=false, data_map_func=None))]
 pub fn pauli_feature_map(
@@ -123,20 +123,41 @@ pub fn pauli_feature_map(
     alpha: f64,
     insert_barriers: bool,
     data_map_func: Option<&Bound<PyAny>>,
-) -> Result<CircuitData, PyErr> {
-    // normalize the Pauli strings to a Vec<String>
-    let paulis = paulis.map_or_else(
-        || Ok(PyList::new_bound(py, vec!["z", "zz"])), // default list is ["z", "zz"]
-        PySequenceMethods::to_list,
+) -> PyResult<CircuitData> {
+    // Normalize the Pauli strings to a Vec<String>. We first define the default, which is
+    // ["z", "zz"], unless we only have a single qubit, in which case we default to ["z"].
+    // Then, ``pauli_strings`` is either set to the default, or we try downcasting to a
+    // PyString->String, followed by a check whether the feature dimension is large enough
+    // for the Pauli (e.g. we cannot implement a "zzz" Pauli on a 2 qubit circuit).
+    let default_pauli: Vec<String> = if feature_dimension == 1 {
+        vec!["z".to_string()]
+    } else {
+        vec!["z".to_string(), "zz".to_string()]
+    };
+
+    let pauli_strings = paulis.map_or_else(
+        || Ok(default_pauli), // use Ok() since we might raise an error in the other arm
+        |v| {
+            let v = PySequenceMethods::to_list(v)?; // sequence to list
+            v.iter()
+                .map(|el| {
+                    // downcast and check whether it is valid
+                    let as_string = (*el
+                        .downcast::<PyString>()
+                        .expect("Error unpacking the ``paulis`` argument"))
+                    .to_string();
+                    if as_string.len() > feature_dimension as usize {
+                        Err(QiskitError::new_err(format!(
+                            "feature_dimension ({}) smaller than the Pauli ({})",
+                            feature_dimension, as_string
+                        )))
+                    } else {
+                        Ok(as_string)
+                    }
+                })
+                .collect::<Result<Vec<String>, _>>()
+        },
     )?;
-    let pauli_strings = &paulis
-        .iter()
-        .map(|el| {
-            (*el.downcast::<PyString>()
-                .expect("Error unpacking the ``paulis`` argument"))
-            .to_string()
-        })
-        .collect_vec();
 
     // set the default value for entanglement
     let default = PyString::new_bound(py, "full");
@@ -151,7 +172,7 @@ pub fn pauli_feature_map(
     let packed_evo = _pauli_feature_map(
         py,
         feature_dimension,
-        pauli_strings,
+        &pauli_strings,
         &entanglement,
         &parameter_vector,
         reps,
@@ -159,10 +180,6 @@ pub fn pauli_feature_map(
         data_map_func,
         insert_barriers,
     );
-    // CircuitData::from_standard_gates(py, feature_dimension, evo, Param::Float(0.0))
-    // let cargs: Vec<Clbit> = Vec::new();
-    // let packed_evo =
-    //     evo.map(|(inst, params, qargs)| (inst.into(), params, qargs.to_vec(), cargs.clone()));
     CircuitData::from_packed_operations(py, feature_dimension, 0, packed_evo, Param::Float(0.0))
 }
 
@@ -177,10 +194,6 @@ fn _pauli_feature_map<'a>(
     data_map_func: Option<&'a Bound<PyAny>>,
     insert_barriers: bool,
 ) -> impl Iterator<Item = Instruction> + 'a {
-    // ) -> impl Iterator<Item = Instruction> + 'a {
-    // Skeleton for barrier
-    // let barrier_cls: Bound<PyAny> = imports::BARRIER.get_bound(py);
-    // barrier_cls.call1((num_qubits,)) -> build PyInstruction -> into()
     let barrier_cls = imports::BARRIER.get_bound(py);
     let barrier = barrier_cls
         .call1((feature_dimension,))
