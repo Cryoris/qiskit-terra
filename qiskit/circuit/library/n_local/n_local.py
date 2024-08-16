@@ -33,11 +33,27 @@ from qiskit.exceptions import QiskitError
 from qiskit.circuit.library.standard_gates import get_standard_gate_name_mapping
 from qiskit._accelerate.circuit_library import get_entangler_map as fast_entangler_map
 
+from qiskit._accelerate.circuit_library import n_local as rust_local
+
 from ..blueprintcircuit import BlueprintCircuit
 
 
 if typing.TYPE_CHECKING:
     import qiskit  # pylint: disable=cyclic-import
+
+
+def n_local(num_qubits, rotation_blocks, reps=3, entanglement="full"):
+    if not isinstance(rotation_blocks, list):
+        rotation_blocks = [rotation_blocks]
+
+    return QuantumCircuit._from_circuit_data(
+        rust_local(
+            num_qubits=num_qubits,
+            rotation_blocks=rotation_blocks,
+            reps=reps,
+            entanglement=entanglement,
+        )
+    )
 
 
 class NLocal(BlueprintCircuit):

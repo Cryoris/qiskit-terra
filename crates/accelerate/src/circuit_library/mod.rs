@@ -14,6 +14,7 @@ use pyo3::prelude::*;
 use pyo3::types::PyTuple;
 
 mod entanglement;
+mod n_local;
 mod pauli_feature_map;
 
 /// Get the entanglement for given number of qubits and block size.
@@ -65,6 +66,7 @@ pub fn get_entangler_map<'py>(
 
 #[pymodule]
 pub fn circuit_library(m: &Bound<PyModule>) -> PyResult<()> {
+    m.add_wrapped(wrap_pyfunction!(n_local::n_local))?;
     m.add_wrapped(wrap_pyfunction!(pauli_feature_map::pauli_feature_map))?;
     m.add_wrapped(wrap_pyfunction!(get_entangler_map))?;
     Ok(())
