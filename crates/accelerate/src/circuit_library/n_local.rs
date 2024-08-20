@@ -10,19 +10,18 @@
 // copyright notice, and modified files need to carry a notice indicating
 // that they have been altered from the originals.
 
+use hashbrown::HashSet;
 use pyo3::prelude::*;
 use pyo3::types::{PyList, PyTuple};
 use qiskit_circuit::circuit_instruction::OperationFromPython;
 use qiskit_circuit::packed_instruction::PackedOperation;
-use smallvec::SmallVec;
+use smallvec::{smallvec, SmallVec};
 
 use qiskit_circuit::circuit_data::CircuitData;
-use qiskit_circuit::operations::Param;
-use qiskit_circuit::{Clbit, Qubit};
+use qiskit_circuit::operations::{Param, PyInstruction};
+use qiskit_circuit::{imports, Clbit, Qubit};
 
 use itertools::izip;
-
-use crate::circuit_library::entanglement;
 
 type Instruction = (
     PackedOperation,
@@ -35,19 +34,23 @@ fn rotation_layer<'a>(
     num_qubits: u32,
     packed_rotations: &'a Vec<PackedOperation>,
     parameters: &'a Vec<Vec<Vec<Param>>>,
+    skipped_qubits: &'a HashSet<u32>,
 ) -> impl Iterator<Item = Instruction> + 'a {
     packed_rotations
         .iter()
         .zip(parameters)
         .flat_map(move |(packed_op, block_params)| {
-            (0..num_qubits).zip(block_params).map(move |(i, params)| {
-                (
-                    packed_op.clone(),
-                    SmallVec::from_vec(params.clone()),
-                    vec![Qubit(i)],
-                    vec![] as Vec<Clbit>,
-                )
-            })
+            (0..num_qubits)
+                .filter(|i| !skipped_qubits.contains(i))
+                .zip(block_params)
+                .map(move |(i, params)| {
+                    (
+                        packed_op.clone(),
+                        SmallVec::from_vec(params.clone()),
+                        vec![Qubit(i)],
+                        vec![] as Vec<Clbit>,
+                    )
+                })
         })
 }
 
@@ -56,30 +59,24 @@ fn entanglement_layer<'a>(
     packend_entanglings: &'a Vec<PackedOperation>,
     parameters: &'a Vec<Vec<Vec<Param>>>,
 ) -> impl Iterator<Item = Instruction> + 'a {
-    // let zipped = izip!(packend_entanglings, parameters, entanglement);
-    // zipped.flat_map(move |(packed_op, block_params, block_entanglement)| {
-
-    packend_entanglings
-        .iter()
-        .zip(parameters)
-        .zip(entanglement)
-        .flat_map(move |((packed_op, block_params), block_entanglement)| {
-            block_entanglement
-                .iter()
-                .zip(block_params)
-                .map(|(indices, params)| {
-                    (
-                        packed_op.clone(),
-                        SmallVec::from_vec(params.clone()),
-                        indices.iter().map(|i| Qubit(*i)).collect(),
-                        vec![] as Vec<Clbit>,
-                    )
-                })
-        })
+    let zipped = izip!(packend_entanglings, parameters, entanglement);
+    zipped.flat_map(move |(packed_op, block_params, block_entanglement)| {
+        block_entanglement
+            .iter()
+            .zip(block_params)
+            .map(|(indices, params)| {
+                (
+                    packed_op.clone(),
+                    SmallVec::from_vec(params.clone()),
+                    indices.iter().map(|i| Qubit(*i)).collect(),
+                    vec![] as Vec<Clbit>,
+                )
+            })
+    })
 }
 
 #[pyfunction]
-#[pyo3(signature = (num_qubits, reps, rotation_blocks, rotation_parameters, entanglement, entanglement_blocks, entanglement_parameters, skip_final_rotation_layer))]
+#[pyo3(signature = (num_qubits, reps, rotation_blocks, rotation_parameters, entanglement, entanglement_blocks, entanglement_parameters, insert_barriers, skip_final_rotation_layer, skip_unentangled_qubits))]
 pub fn n_local(
     py: Python,
     num_qubits: i64,
@@ -89,7 +86,9 @@ pub fn n_local(
     entanglement: &Bound<PyAny>,
     entanglement_blocks: &Bound<PyAny>,
     entanglement_parameters: Bound<PyAny>,
+    insert_barriers: bool,
     skip_final_rotation_layer: bool,
+    skip_unentangled_qubits: bool,
 ) -> PyResult<CircuitData> {
     // extract the parameters from the input variable ``parameters``
     // the rotation parameters are given as list[list[list[list[ParameterExpression]]]]
@@ -101,24 +100,45 @@ pub fn n_local(
 
     let entanglement = extract_entanglement(entanglement);
 
+    // Compute the qubits that are skipped in the rotation layer. If this is set,
+    // we skip qubits that do not appear in any of the entanglement layers.
+    let skipped_qubits = if skip_unentangled_qubits {
+        let active: HashSet<&u32> =
+            HashSet::from_iter(entanglement.iter().flatten().flatten().flatten());
+        HashSet::from_iter((0..num_qubits as u32).filter(|i| !active.contains(i)))
+    } else {
+        HashSet::new()
+    };
+
+    // This is a barrier, if we insert barriers, otherwise an empty vector.
+    // This allows to nicely iterate over this variable instead of nasty conditional chains later on.
+    let barrier: Vec<Instruction> = match insert_barriers {
+        true => vec![get_barrier(py, num_qubits as u32)],
+        false => vec![],
+    };
+
     let mut packed_insts: Box<dyn Iterator<Item = Instruction>> =
         Box::new((0..reps as usize).flat_map(|rep| {
             rotation_layer(
                 num_qubits as u32,
                 &packed_rotations,
                 &rotation_parameters[rep],
+                &skipped_qubits,
             )
+            .chain(barrier.clone().into_iter())
             .chain(entanglement_layer(
                 &entanglement[rep],
                 &packed_entanglings,
                 &entanglement_parameters[rep],
             ))
+            .chain(barrier.clone().into_iter())
         }));
     if !skip_final_rotation_layer {
         packed_insts = Box::new(packed_insts.chain(rotation_layer(
             num_qubits as u32,
             &packed_rotations,
             &rotation_parameters[reps as usize],
+            &skipped_qubits,
         )))
     }
 
@@ -199,4 +219,25 @@ fn extract_packed_ops(gatelist: &Bound<PyAny>) -> PyResult<Vec<PackedOperation>>
         .map(move |py_op| py_op.operation.clone())
         .collect();
     Ok(packed_rotations)
+}
+
+fn get_barrier(py: Python, num_qubits: u32) -> Instruction {
+    let barrier_cls = imports::BARRIER.get_bound(py);
+    let barrier = barrier_cls
+        .call1((num_qubits,))
+        .expect("Could not create Barrier Python-side");
+    let barrier_inst = PyInstruction {
+        qubits: num_qubits,
+        clbits: 0,
+        params: 0,
+        op_name: "barrier".to_string(),
+        control_flow: false,
+        instruction: barrier.into(),
+    };
+    (
+        barrier_inst.into(),
+        smallvec![],
+        (0..num_qubits).map(|i| Qubit(i)).collect(),
+        vec![] as Vec<Clbit>,
+    )
 }

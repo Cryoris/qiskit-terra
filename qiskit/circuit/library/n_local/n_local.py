@@ -20,6 +20,7 @@ import typing
 from collections.abc import Callable, Mapping, Sequence
 
 import numpy
+from qiskit.circuit.gate import Gate
 from qiskit.circuit.quantumcircuit import QuantumCircuit
 from qiskit.circuit.quantumregister import QuantumRegister
 from qiskit.circuit import (
@@ -43,17 +44,23 @@ if typing.TYPE_CHECKING:
 
 
 def n_local(
-    num_qubits,
-    rotation_blocks,
-    entanglement_blocks,
-    reps=3,
-    entanglement="full",
-    skip_final_rotation_layer=False,
+    num_qubits: int,
+    rotation_blocks: str | Gate | list[str | Gate],
+    entanglement_blocks: str | Gate | list[str | Gate],
+    entanglement: str | list[tuple[int]] | Callable[[int], str | list[tuple[int]]] = "full",
+    reps: int = 3,
+    insert_barriers: bool = False,
+    parameter_prefix: str = "θ",
+    overwrite_block_parameters: bool = True,
+    skip_final_rotation_layer: bool = False,
+    skip_unentangled_qubits: bool = False,
+    name: str | None = "nlocal",
 ):
     if not isinstance(rotation_blocks, list):
         rotation_blocks = [rotation_blocks]
 
     final_layer_extension = int(not skip_final_rotation_layer)
+    # handle rot blocks with more than 1 qubit
     num_rotation_params = (
         num_qubits
         * (reps + final_layer_extension)
@@ -64,6 +71,7 @@ def n_local(
             ]
         )
     )
+
     expanded_entanglement = [
         [
             fast_entangler_map(num_qubits, block.num_qubits, entanglement, rep)
@@ -91,11 +99,10 @@ def n_local(
         ]
     )
 
-    parameter_vector = ParameterVector("x", length=num_rotation_params + num_entangling_params)
+    parameter_vector = ParameterVector(
+        parameter_prefix, length=num_rotation_params + num_entangling_params
+    )
     parameter_iter = iter(parameter_vector)
-
-    print("num rot:", num_rotation_params)
-    print("num entangling:", num_entangling_params)
 
     new_rotation_params = []  # Nesting: reps->rotation block->qubits->parameters
     new_entanglement_params = []  # Nesting: reps->entanglement blocks->entanglings->parameters
@@ -106,7 +113,11 @@ def n_local(
             expressions = [expr for expr in block.params if isinstance(expr, ParameterExpression)]
             per_block = [
                 [
-                    expr.subs({p: next(parameter_iter) for p in expr.parameters})
+                    (
+                        expr.subs({p: next(parameter_iter) for p in expr.parameters})
+                        if overwrite_block_parameters
+                        else expr
+                    )
                     for expr in expressions
                 ]
                 for _ in range(num_qubits)
@@ -122,7 +133,11 @@ def n_local(
                 ]
                 per_block = [
                     [
-                        expr.subs({p: next(parameter_iter) for p in expr.parameters})
+                        (
+                            expr.subs({p: next(parameter_iter) for p in expr.parameters})
+                            if overwrite_block_parameters
+                            else expr
+                        )
                         for expr in expressions
                     ]
                     for _ in enumerate(expanded_entanglement[rep][block_idx])
@@ -131,10 +146,7 @@ def n_local(
 
             new_entanglement_params.append(per_rep)
 
-    print("pyrot", len(new_rotation_params))
-    print("pyent", new_entanglement_params)
-
-    return QuantumCircuit._from_circuit_data(
+    nlocal = QuantumCircuit._from_circuit_data(
         rust_local(
             num_qubits=num_qubits,
             reps=reps,
@@ -143,9 +155,13 @@ def n_local(
             entanglement_blocks=entanglement_blocks,
             entanglement=expanded_entanglement,
             entanglement_parameters=new_entanglement_params,
+            insert_barriers=insert_barriers,
             skip_final_rotation_layer=skip_final_rotation_layer,
+            skip_unentangled_qubits=skip_unentangled_qubits,
         )
     )
+    nlocal.name = name
+    return nlocal
 
 
 class NLocal(BlueprintCircuit):
