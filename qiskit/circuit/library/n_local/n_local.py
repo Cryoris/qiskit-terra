@@ -46,12 +46,49 @@ def n_local(num_qubits, rotation_blocks, reps=3, entanglement="full"):
     if not isinstance(rotation_blocks, list):
         rotation_blocks = [rotation_blocks]
 
+    num_rotation_params = sum(
+        [
+            sum([len(p.parameters) for p in block.params if isinstance(p, ParameterExpression)])
+            for block in rotation_blocks
+        ]
+    )
+    # Nesting: reps->rotation block, i.e. [ [ [rep0_block0_q0, rep0_block0_q1, ... ], [rep0_block1_..] ], [ [rep1_.. ] ] ]
+    # num_rotation_params = sum(sum(len(params) for block in rotation_params for params in block))
+    parameter_vector = ParameterVector("x", length=num_rotation_params * reps * num_qubits)
+    parameter_iter = iter(parameter_vector)
+
+    new_rotation_params = []
+    new_entanglement_params = []
+
+    for _ in range(reps):
+        per_rep = []
+        for block in rotation_blocks:
+            expressions = [expr for expr in block.params if isinstance(expr, ParameterExpression)]
+            per_block = [
+                [
+                    expr.subs({p: next(parameter_iter) for p in expr.parameters})
+                    for expr in expressions
+                ]
+                for _ in range(num_qubits)
+            ]
+            per_rep.append(per_block)
+        new_rotation_params.append(per_rep)
+
+    from pprint import pprint
+
+    pprint(new_rotation_params)
+
+    for rep in range(reps):
+        for block in range(len(rotation_blocks)):
+            print(rep, block, new_rotation_params[rep][block])
+
     return QuantumCircuit._from_circuit_data(
         rust_local(
             num_qubits=num_qubits,
             rotation_blocks=rotation_blocks,
             reps=reps,
             entanglement=entanglement,
+            parameters=new_rotation_params,
         )
     )
 
