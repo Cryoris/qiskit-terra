@@ -42,25 +42,65 @@ if typing.TYPE_CHECKING:
     import qiskit  # pylint: disable=cyclic-import
 
 
-def n_local(num_qubits, rotation_blocks, reps=3, entanglement="full"):
+def n_local(
+    num_qubits,
+    rotation_blocks,
+    entanglement_blocks,
+    reps=3,
+    entanglement="full",
+    skip_final_rotation_layer=False,
+):
     if not isinstance(rotation_blocks, list):
         rotation_blocks = [rotation_blocks]
 
-    num_rotation_params = sum(
+    final_layer_extension = int(not skip_final_rotation_layer)
+    num_rotation_params = (
+        num_qubits
+        * (reps + final_layer_extension)
+        * sum(
+            [
+                sum([len(p.parameters) for p in block.params if isinstance(p, ParameterExpression)])
+                for block in rotation_blocks
+            ]
+        )
+    )
+    expanded_entanglement = [
         [
-            sum([len(p.parameters) for p in block.params if isinstance(p, ParameterExpression)])
-            for block in rotation_blocks
+            fast_entangler_map(num_qubits, block.num_qubits, entanglement, rep)
+            for block in entanglement_blocks
+        ]
+        for rep in range(reps)
+    ]
+
+    num_entangling_params = sum(
+        [
+            sum(
+                [
+                    len(expanded_entanglement[rep][block_idx])
+                    * sum(
+                        [
+                            len(p.parameters)
+                            for p in block.params
+                            if isinstance(p, ParameterExpression)
+                        ]
+                    )
+                    for block_idx, block in enumerate(entanglement_blocks)
+                ]
+            )
+            for rep in range(reps)
         ]
     )
-    # Nesting: reps->rotation block, i.e. [ [ [rep0_block0_q0, rep0_block0_q1, ... ], [rep0_block1_..] ], [ [rep1_.. ] ] ]
-    # num_rotation_params = sum(sum(len(params) for block in rotation_params for params in block))
-    parameter_vector = ParameterVector("x", length=num_rotation_params * reps * num_qubits)
+
+    parameter_vector = ParameterVector("x", length=num_rotation_params + num_entangling_params)
     parameter_iter = iter(parameter_vector)
 
-    new_rotation_params = []
-    new_entanglement_params = []
+    print("num rot:", num_rotation_params)
+    print("num entangling:", num_entangling_params)
 
-    for _ in range(reps):
+    new_rotation_params = []  # Nesting: reps->rotation block->qubits->parameters
+    new_entanglement_params = []  # Nesting: reps->entanglement blocks->entanglings->parameters
+
+    for rep in range(reps + final_layer_extension):
         per_rep = []
         for block in rotation_blocks:
             expressions = [expr for expr in block.params if isinstance(expr, ParameterExpression)]
@@ -74,21 +114,36 @@ def n_local(num_qubits, rotation_blocks, reps=3, entanglement="full"):
             per_rep.append(per_block)
         new_rotation_params.append(per_rep)
 
-    from pprint import pprint
+        if rep < reps:  # skip if we add the final rotation layer
+            per_rep = []
+            for block_idx, block in enumerate(entanglement_blocks):
+                expressions = [
+                    expr for expr in block.params if isinstance(expr, ParameterExpression)
+                ]
+                per_block = [
+                    [
+                        expr.subs({p: next(parameter_iter) for p in expr.parameters})
+                        for expr in expressions
+                    ]
+                    for _ in enumerate(expanded_entanglement[rep][block_idx])
+                ]
+                per_rep.append(per_block)
 
-    pprint(new_rotation_params)
+            new_entanglement_params.append(per_rep)
 
-    for rep in range(reps):
-        for block in range(len(rotation_blocks)):
-            print(rep, block, new_rotation_params[rep][block])
+    print("pyrot", len(new_rotation_params))
+    print("pyent", new_entanglement_params)
 
     return QuantumCircuit._from_circuit_data(
         rust_local(
             num_qubits=num_qubits,
-            rotation_blocks=rotation_blocks,
             reps=reps,
-            entanglement=entanglement,
-            parameters=new_rotation_params,
+            rotation_blocks=rotation_blocks,
+            rotation_parameters=new_rotation_params,
+            entanglement_blocks=entanglement_blocks,
+            entanglement=expanded_entanglement,
+            entanglement_parameters=new_entanglement_params,
+            skip_final_rotation_layer=skip_final_rotation_layer,
         )
     )
 
