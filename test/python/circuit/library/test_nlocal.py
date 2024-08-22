@@ -993,6 +993,35 @@ class TestEntanglement(QiskitTestCase):
                 )
                 self.assertEqual(expected, entanglement)
 
+    @data("full", "reverse_linear", "linear", "circular", "sca", "pairwise")
+    def test_0q(self, entanglement):
+        """Test the corner case of a single qubit block."""
+        entanglement = fast_entangler_map(
+            num_qubits=3, block_size=0, entanglement=entanglement, offset=0
+        )
+        expect = []
+        self.assertEqual(entanglement, expect)
+
+    @data("full", "reverse_linear", "linear", "circular", "sca", "pairwise")
+    def test_1q(self, entanglement):
+        """Test the corner case of a single qubit block."""
+        entanglement = fast_entangler_map(
+            num_qubits=3, block_size=1, entanglement=entanglement, offset=0
+        )
+        expect = [(i,) for i in range(3)]
+
+        self.assertEqual(set(entanglement), set(expect))  # order does not matter for 1 qubit
+
+    @data("full", "reverse_linear", "linear", "circular", "sca")
+    def test_full_block(self, entanglement):
+        """Test the corner case of the block size equal the number of qubits."""
+        entanglement = fast_entangler_map(
+            num_qubits=5, block_size=5, entanglement=entanglement, offset=0
+        )
+        expect = [tuple(range(5))]
+
+        self.assertEqual(entanglement, expect)
+
     def test_pairwise_limit(self):
         """Test pairwise raises an error above 2 qubits."""
         _ = fast_entangler_map(num_qubits=4, block_size=1, entanglement="pairwise", offset=0)
@@ -1006,7 +1035,7 @@ class TestEntanglement(QiskitTestCase):
             _ = fast_entangler_map(num_qubits=2, block_size=3, entanglement="linear", offset=0)
 
     def test_invalid_entanglement_str(self):
-        """Go drunk, you're home"""
+        """Test invalid entanglement string."""
         with self.assertRaises(QiskitError):
             _ = fast_entangler_map(num_qubits=4, block_size=2, entanglement="lniaer", offset=0)
 
