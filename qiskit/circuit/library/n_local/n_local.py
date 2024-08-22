@@ -17,7 +17,7 @@ from __future__ import annotations
 import collections
 import itertools
 import typing
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence, Iterable
 
 import numpy
 from qiskit.circuit.gate import Gate
@@ -45,9 +45,11 @@ if typing.TYPE_CHECKING:
 
 def n_local(
     num_qubits: int,
-    rotation_blocks: str | Gate | list[str | Gate],
-    entanglement_blocks: str | Gate | list[str | Gate],
-    entanglement: str | list[tuple[int]] | Callable[[int], str | list[tuple[int]]] = "full",
+    rotation_blocks: str | Gate | Iterable[str | Gate],
+    entanglement_blocks: str | Gate | Iterable[str | Gate],
+    entanglement: (
+        str | Iterable[Iterable[int]] | Callable[[int], str | Iterable[Iterable[int]]]
+    ) = "full",
     reps: int = 3,
     insert_barriers: bool = False,
     parameter_prefix: str = "θ",
@@ -56,8 +58,10 @@ def n_local(
     skip_unentangled_qubits: bool = False,
     name: str | None = "nlocal",
 ):
-    if not isinstance(rotation_blocks, list):
-        rotation_blocks = [rotation_blocks]
+    supported_gates = get_standard_gate_name_mapping()
+    rotation_blocks = _normalize_blocks(rotation_blocks, supported_gates)
+    entanglement_blocks = _normalize_blocks(entanglement_blocks, supported_gates)
+    entanglement = _normalize_entanglement(entanglement)
 
     final_layer_extension = int(not skip_final_rotation_layer)
     num_rotation_params = (reps + final_layer_extension) * sum(
@@ -143,8 +147,6 @@ def n_local(
 
             new_entanglement_params.append(per_rep)
 
-    print(new_rotation_params)
-
     nlocal = QuantumCircuit._from_circuit_data(
         rust_local(
             num_qubits=num_qubits,
@@ -161,6 +163,37 @@ def n_local(
     )
     nlocal.name = name
     return nlocal
+
+
+def _normalize_blocks(
+    blocks: Gate | Iterable[Gate], supported_gates: dict[str, Gate]
+) -> list[Gate]:
+    if not isinstance(blocks, Iterable):
+        blocks = [blocks]
+
+    normalized = []
+    for block in blocks:
+        if isinstance(block, Gate):
+            normalized.append(block)
+        else:  # str
+            if block not in supported_gates:
+                raise ValueError(f"Unsupported gate: {block}")
+            normalized.append(supported_gates[block])
+
+    return normalized
+
+
+def _normalize_entanglement(
+    entanglement: str | Iterable[Iterable[int]] | Callable[[int], str | Iterable[Iterable[int]]]
+) -> str | list[tuple[int]] | Callable[[int], str | list[tuple[int]]]:
+    """If the entanglement is Iterable[Iterable], normalize to list[tuple]."""
+    if isinstance(entanglement, Iterable):
+        return list(tuple(connections) for connections in entanglement)
+
+    if callable(entanglement):
+        return lambda offset: _normalize_entanglement(entanglement(offset))
+
+    return entanglement
 
 
 class NLocal(BlueprintCircuit):
