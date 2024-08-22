@@ -18,7 +18,7 @@ use qiskit_circuit::packed_instruction::PackedOperation;
 use smallvec::{smallvec, SmallVec};
 
 use qiskit_circuit::circuit_data::CircuitData;
-use qiskit_circuit::operations::{Param, PyInstruction};
+use qiskit_circuit::operations::{Operation, Param, PyInstruction};
 use qiskit_circuit::{imports, Clbit, Qubit};
 
 use itertools::izip;
@@ -32,22 +32,26 @@ type Instruction = (
 
 fn rotation_layer<'a>(
     num_qubits: u32,
-    packed_rotations: &'a Vec<PackedOperation>,
+    packed_rotations: &'a Vec<(PackedOperation, u32)>,
     parameters: &'a Vec<Vec<Vec<Param>>>,
     skipped_qubits: &'a HashSet<u32>,
 ) -> impl Iterator<Item = Instruction> + 'a {
     packed_rotations
         .iter()
         .zip(parameters)
-        .flat_map(move |(packed_op, block_params)| {
+        .flat_map(move |((packed_op, size), block_params)| {
             (0..num_qubits)
-                .filter(|i| !skipped_qubits.contains(i))
+                .step_by(*size as usize)
+                .filter(move |start_idx| {
+                    skipped_qubits
+                        .is_disjoint(&HashSet::from_iter(*start_idx..(*start_idx + *size)))
+                })
                 .zip(block_params)
-                .map(move |(i, params)| {
+                .map(move |(start_idx, params)| {
                     (
                         packed_op.clone(),
                         SmallVec::from_vec(params.clone()),
-                        vec![Qubit(i)],
+                        (0..*size).map(|i| Qubit(start_idx + i)).collect(),
                         vec![] as Vec<Clbit>,
                     )
                 })
@@ -56,7 +60,7 @@ fn rotation_layer<'a>(
 
 fn entanglement_layer<'a>(
     entanglement: &'a Vec<Vec<Vec<u32>>>,
-    packend_entanglings: &'a Vec<PackedOperation>,
+    packend_entanglings: &'a Vec<(PackedOperation, u32)>,
     parameters: &'a Vec<Vec<Vec<Param>>>,
 ) -> impl Iterator<Item = Instruction> + 'a {
     let zipped = izip!(packend_entanglings, parameters, entanglement);
@@ -66,7 +70,7 @@ fn entanglement_layer<'a>(
             .zip(block_params)
             .map(|(indices, params)| {
                 (
-                    packed_op.clone(),
+                    packed_op.0.clone(),
                     SmallVec::from_vec(params.clone()),
                     indices.iter().map(|i| Qubit(*i)).collect(),
                     vec![] as Vec<Clbit>,
@@ -208,15 +212,18 @@ fn extract_parameters(py_parameters: Bound<PyAny>) -> Vec<Vec<Vec<Vec<Param>>>> 
         .collect()
 }
 
-fn extract_packed_ops(gatelist: &Bound<PyAny>) -> PyResult<Vec<PackedOperation>> {
+fn extract_packed_ops(gatelist: &Bound<PyAny>) -> PyResult<Vec<(PackedOperation, u32)>> {
     let py_ops = gatelist
         .downcast::<PyList>()?
         .into_iter()
         .map(|op| op.extract::<OperationFromPython>())
         .collect::<Result<Vec<_>, _>>()?;
-    let packed_rotations: Vec<PackedOperation> = py_ops
+    let packed_rotations: Vec<(PackedOperation, u32)> = py_ops
         .iter()
-        .map(move |py_op| py_op.operation.clone())
+        .map(move |py_op| {
+            let packed_op = &py_op.operation;
+            (packed_op.clone(), packed_op.view().num_qubits())
+        })
         .collect();
     Ok(packed_rotations)
 }

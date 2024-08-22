@@ -60,16 +60,13 @@ def n_local(
         rotation_blocks = [rotation_blocks]
 
     final_layer_extension = int(not skip_final_rotation_layer)
-    # handle rot blocks with more than 1 qubit
-    num_rotation_params = (
-        num_qubits
-        * (reps + final_layer_extension)
-        * sum(
-            [
-                sum([len(p.parameters) for p in block.params if isinstance(p, ParameterExpression)])
-                for block in rotation_blocks
-            ]
-        )
+    num_rotation_params = (reps + final_layer_extension) * sum(
+        [
+            num_qubits
+            // block.num_qubits  # number of blocks that fit on all qubits
+            * sum([len(p.parameters) for p in block.params if isinstance(p, ParameterExpression)])
+            for block in rotation_blocks
+        ]
     )
 
     expanded_entanglement = [
@@ -120,7 +117,7 @@ def n_local(
                     )
                     for expr in expressions
                 ]
-                for _ in range(num_qubits)
+                for _ in range(num_qubits // block.num_qubits)
             ]
             per_rep.append(per_block)
         new_rotation_params.append(per_rep)
@@ -145,6 +142,8 @@ def n_local(
                 per_rep.append(per_block)
 
             new_entanglement_params.append(per_rep)
+
+    print(new_rotation_params)
 
     nlocal = QuantumCircuit._from_circuit_data(
         rust_local(
