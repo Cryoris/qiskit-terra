@@ -10,6 +10,16 @@
 # copyright notice, and modified files need to carry a notice indicating
 # that they have been altered from the originals.
 
+<<<<<<< HEAD
 """Synthesis for multi-controlled gates."""
 
 from .mcmt_vchain import synth_mcmt_vchain
+=======
+"""Module containing multi-controlled circuits synthesis"""
+
+from .mcx_with_ancillas_synth import (
+    synth_mcx_n_dirty_i15,
+    synth_mcx_n_clean_m15,
+    synth_mcx_1_clean_b95,
+)
+>>>>>>> main
