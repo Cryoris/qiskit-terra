@@ -18,7 +18,7 @@ use qiskit_circuit::packed_instruction::PackedOperation;
 use smallvec::{smallvec, SmallVec};
 
 use qiskit_circuit::circuit_data::CircuitData;
-use qiskit_circuit::operations::{Operation, Param, PyInstruction};
+use qiskit_circuit::operations::{Operation, OperationRef, Param, PyGate, PyInstruction};
 use qiskit_circuit::{imports, Clbit, Qubit};
 
 use itertools::izip;
@@ -31,6 +31,7 @@ type Instruction = (
 );
 
 fn rotation_layer<'a>(
+    py: Python<'a>,
     num_qubits: u32,
     packed_rotations: &'a Vec<(PackedOperation, u32)>,
     parameters: &'a Vec<Vec<Vec<Param>>>,
@@ -48,8 +49,9 @@ fn rotation_layer<'a>(
                 })
                 .zip(block_params)
                 .map(move |(start_idx, params)| {
+                    let rebound = rebind_op(py, packed_op, params).expect("Failed to rebind.");
                     (
-                        packed_op.clone(),
+                        rebound,
                         SmallVec::from_vec(params.clone()),
                         (0..*size).map(|i| Qubit(start_idx + i)).collect(),
                         vec![] as Vec<Clbit>,
@@ -59,6 +61,7 @@ fn rotation_layer<'a>(
 }
 
 fn entanglement_layer<'a>(
+    py: Python<'a>,
     entanglement: &'a Vec<Vec<Vec<u32>>>,
     packend_entanglings: &'a Vec<(PackedOperation, u32)>,
     parameters: &'a Vec<Vec<Vec<Param>>>,
@@ -68,9 +71,10 @@ fn entanglement_layer<'a>(
         block_entanglement
             .iter()
             .zip(block_params)
-            .map(|(indices, params)| {
+            .map(move |(indices, params)| {
+                let rebound = rebind_op(py, &packed_op.0, params).expect("Failed to rebind.");
                 (
-                    packed_op.0.clone(),
+                    rebound,
                     SmallVec::from_vec(params.clone()),
                     indices.iter().map(|i| Qubit(*i)).collect(),
                     vec![] as Vec<Clbit>,
@@ -124,6 +128,7 @@ pub fn n_local(
     let mut packed_insts: Box<dyn Iterator<Item = Instruction>> =
         Box::new((0..reps as usize).flat_map(|rep| {
             rotation_layer(
+                py,
                 num_qubits as u32,
                 &packed_rotations,
                 &rotation_parameters[rep],
@@ -131,6 +136,7 @@ pub fn n_local(
             )
             .chain(barrier.clone().into_iter())
             .chain(entanglement_layer(
+                py,
                 &entanglement[rep],
                 &packed_entanglings,
                 &entanglement_parameters[rep],
@@ -139,6 +145,7 @@ pub fn n_local(
         }));
     if !skip_final_rotation_layer {
         packed_insts = Box::new(packed_insts.chain(rotation_layer(
+            py,
             num_qubits as u32,
             &packed_rotations,
             &rotation_parameters[reps as usize],
@@ -247,4 +254,54 @@ fn get_barrier(py: Python, num_qubits: u32) -> Instruction {
         (0..num_qubits).map(|i| Qubit(i)).collect(),
         vec![] as Vec<Clbit>,
     )
+}
+
+fn rebind_op(
+    py: Python,
+    packed_op: &PackedOperation,
+    params: &Vec<Param>,
+) -> PyResult<PackedOperation> {
+    let out = packed_op.clone();
+    match out.view() {
+        OperationRef::Standard(_) => {
+            Ok(out) // if StandardGate, no rebinding necessary
+        }
+        OperationRef::Operation(_) => {
+            Ok(out) // if Operation, no rebinding necessary
+        }
+        // for gate and instruction we copy the operation and bind the parameters on
+        // the underlying Python object using Instruction._assign_parameters
+        OperationRef::Gate(py_gate) => {
+            let py_params =
+                PyList::new_bound(py, params.iter().map(|p| p.clone().into_py(py))).into_any();
+            let copy = py_gate
+                .gate
+                .call_method1(py, "_assign_parameters", (py_params, false))?;
+            let bound_gate = Box::new(PyGate {
+                qubits: py_gate.qubits,
+                clbits: py_gate.clbits,
+                params: py_gate.params,
+                op_name: py_gate.op_name.clone(),
+                gate: copy,
+            });
+            Ok(PackedOperation::from_gate(bound_gate))
+        }
+        OperationRef::Instruction(py_inst) => {
+            let py_params =
+                PyList::new_bound(py, params.iter().map(|p| p.clone().into_py(py))).into_any();
+            let copy =
+                py_inst
+                    .instruction
+                    .call_method1(py, "_assign_parameters", (py_params, false))?;
+            let bound_inst = Box::new(PyInstruction {
+                qubits: py_inst.qubits,
+                clbits: py_inst.clbits,
+                params: py_inst.params,
+                op_name: py_inst.op_name.clone(),
+                control_flow: py_inst.control_flow,
+                instruction: copy,
+            });
+            Ok(PackedOperation::from_instruction(bound_inst))
+        }
+    }
 }

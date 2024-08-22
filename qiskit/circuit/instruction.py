@@ -674,3 +674,39 @@ class Instruction(Operation):
                 if x != y:
                     return False
         return True
+
+    def _assign_parameters(self, parameters, inplace=False):
+        """Utility to assign parameters on an instruction.
+
+        This will correctly assign parameters both in the definition
+        (if it exists) and in self.params.
+        """
+        out = self if inplace else self.copy()
+
+        # ensure the parameters are a dictionary
+        if not isinstance(parameters, dict):
+            if out.definition is None:
+                # build an intermediary circuit to get the sorted parameters
+                from qiskit.circuit import QuantumCircuit
+
+                for_sorting = QuantumCircuit(self.num_qubits, self.num_clbits)
+                for_sorting.append(self, for_sorting.qubits, for_sorting.clbits)
+                sorted_parameters = for_sorting.parameters
+            else:
+                sorted_parameters = self.definition.parameters
+
+            parameters = dict(zip(sorted_parameters, parameters))
+
+        # bind parameters in circuit definition
+        if out.definition is not None:
+            out.definition.assign_parameters(parameters, inplace=True)
+
+        # bind parameters in .params attribute
+        for i, expr in enumerate(out.params):
+            if isinstance(expr, ParameterExpression):
+                for parameter in expr.parameters:
+                    expr = expr.assign(parameter, parameters[parameter])
+                out.params[i] = expr
+
+        if not inplace:
+            return out
