@@ -12,6 +12,7 @@
 
 """Test circuits with variable parameters."""
 
+import os
 import unittest
 import cmath
 import math
@@ -23,8 +24,8 @@ from ddt import data, ddt, named_data
 
 import qiskit
 import qiskit.circuit.library as circlib
-from qiskit.circuit.library.standard_gates.rz import RZGate
-from qiskit import ClassicalRegister, QuantumCircuit, QuantumRegister
+from qiskit.circuit.library.standard_gates import RZGate, RXGate, HGate
+from qiskit import ClassicalRegister, QuantumCircuit, QuantumRegister, generate_preset_pass_manager
 from qiskit.circuit import Gate, Instruction, Parameter, ParameterExpression, ParameterVector
 from qiskit.circuit.parametertable import ParameterView
 from qiskit.circuit.exceptions import CircuitError
@@ -185,8 +186,6 @@ class TestParameters(QiskitTestCase):
 
     def test_parameters_property(self):
         """Test instantiating gate with variable parameters"""
-        from qiskit.circuit.library.standard_gates.rx import RXGate
-
         theta = Parameter("θ")
         qr = QuantumRegister(1)
         qc = QuantumCircuit(qr)
@@ -374,6 +373,26 @@ class TestParameters(QiskitTestCase):
 
         self.assertAlmostEqual(binds[0], qc.data[0].operation.params[0])
 
+    def test_pycache_in_parallel(self):
+        """Test the cached gates are correctly invalidated.
+
+        This requires Qiskit running in parallel, which might be turned off on Mac
+        per default.
+        """
+        backend = GenericBackendV2(5)
+        pm = generate_preset_pass_manager(1, backend)
+
+        param = Parameter("a")
+        gate = RXGate(param)
+
+        qc_a = QuantumCircuit(1)
+        qc_a.append(gate, [0])
+        qc_b = QuantumCircuit(1)
+        qc_b.append(gate, [0])
+
+        pm.run(qc_a)
+        pm.run([qc_a, qc_b])  # this run will fail
+
     def test_bind_parameters_custom_definition_global_phase(self):
         """Test that a custom gate with a parametrized `global_phase` is assigned correctly."""
         x = Parameter("x")
@@ -487,9 +506,6 @@ class TestParameters(QiskitTestCase):
 
     def test_is_parameterized(self):
         """Test checking if a gate is parameterized (bound/unbound)"""
-        from qiskit.circuit.library.standard_gates.h import HGate
-        from qiskit.circuit.library.standard_gates.rx import RXGate
-
         theta = Parameter("θ")
         rxg = RXGate(theta)
         self.assertTrue(rxg.is_parameterized())
