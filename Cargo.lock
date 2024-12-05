@@ -450,28 +450,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "486f806e73c5707928240ddc295403b1b93c96a02038563881c4a2fd84b81ac4"
 
 [[package]]
-name = "ffi-convert"
-version = "0.6.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "83979d1b24808a399d1506a7213c3f3c512fa1d8701a27e80141e47ff09aac93"
-dependencies = [
- "ffi-convert-derive",
- "libc",
- "thiserror",
-]
-
-[[package]]
-name = "ffi-convert-derive"
-version = "0.6.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fe9ea801ee0e90ec33e6483df59c4644b89c49be7cd0e50b2a762773e552afba"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 1.0.109",
-]
-
-[[package]]
 name = "fixedbitset"
 version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1322,21 +1300,21 @@ dependencies = [
 ]
 
 [[package]]
-name = "qiskit-c-api"
+name = "qiskit-c-ext"
 version = "2.0.0"
 dependencies = [
  "ahash 0.8.11",
  "approx 0.5.1",
  "bytemuck",
  "cbindgen",
- "ffi-convert",
  "hashbrown 0.14.5",
  "indexmap 2.7.0",
  "itertools 0.13.0",
- "libc",
  "ndarray",
  "num-complex",
  "numpy",
+ "qiskit-accelerate",
+ "qiskit-circuit",
  "rayon",
  "rustworkx-core",
  "smallvec",

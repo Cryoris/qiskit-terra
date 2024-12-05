@@ -10,8 +10,25 @@
 // copyright notice, and modified files need to carry a notice indicating
 // that they have been altered from the originals.
 
+use qiskit_accelerate::sparse_observable::BitTerm;
+
 #[no_mangle]
 #[cfg(feature = "cbinding")]
 pub extern "C" fn hello() {
     println!("Sparse observable will go here!");
+}
+
+#[no_mangle]
+#[cfg(feature = "cbinding")]
+pub extern "C" fn bit_term(bit: u8) -> *mut BitTerm {
+    let term = BitTerm::try_from(bit).unwrap();
+    Box::into_raw(Box::new(term))
+}
+
+#[no_mangle]
+#[cfg(feature = "cbinding")]
+pub extern "C" fn bit_term_deallocate(bit: &mut BitTerm) {
+    unsafe {
+        let _ = Box::from_raw(bit);
+    }
 }

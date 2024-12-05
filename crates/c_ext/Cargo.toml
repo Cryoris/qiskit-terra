@@ -1,18 +1,16 @@
 [package]
-name = "qiskit-c-api"
+name = "qiskit-c-ext"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 
 [lib]
-name = "qiskit_c_api"
+name = "qiskit_c_ext"
 doctest = false
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-ffi-convert = "0.6"
-libc = "0.2"
 rayon.workspace = true
 ahash.workspace = true
 rustworkx-core.workspace = true
@@ -23,6 +21,8 @@ numpy.workspace = true
 thiserror.workspace = true
 approx.workspace = true
 itertools.workspace = true
+qiskit-circuit.workspace = true
+qiskit-accelerate.workspace = true
 
 [dependencies.hashbrown]
 workspace = true

@@ -1,0 +1,10 @@
+sys_includes = ["complex.h"]
+
+after_includes = """
+typedef float complex Complex32;
+typedef double complex Complex64;
+"""
+
+[parse]
+parse_deps = true
+include = ["qiskit-accelerate"]  
