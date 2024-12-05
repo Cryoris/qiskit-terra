@@ -21,7 +21,7 @@ from qiskit.transpiler.preset_passmanagers import generate_preset_pass_manager
 from qiskit.providers.fake_provider import GenericBackendV2
 from qiskit.transpiler import CouplingMap
 from qiskit import qasm2
-from .utils import (
+from utils import (
     bv_all_ones,
     trivial_bvlike_circuit,
     build_qv_model_circuit,

@@ -81,3 +81,15 @@ coverage_erase:
 	coverage erase
 
 clean: coverage_erase ;
+
+# TODO since the makelist already does other things, we might want to use a
+# CMakeLists.txt to build the C deps (also it handles deps better, but for now we have this here)
+c-header:
+	cargo build --release
+	cbindgen --crate qiskit-c-api --output test/c/qiskit.h --lang C
+
+c-test:
+	make c-header
+	gcc test/c/test_main.c -o test/c/main.o -lqiskit_c_api -L./target/release
+	LD_LIBRARY_PATH=./target/release test/c/main.o
+

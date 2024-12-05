@@ -1,0 +1,44 @@
+[package]
+name = "qiskit-c-api"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[lib]
+name = "qiskit_c_api"
+doctest = false
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+ffi-convert = "0.6"
+libc = "0.2"
+rayon.workspace = true
+ahash.workspace = true
+rustworkx-core.workspace = true
+bytemuck.workspace = true
+num-complex.workspace = true
+ndarray.workspace = true
+numpy.workspace = true
+thiserror.workspace = true
+approx.workspace = true
+itertools.workspace = true
+
+[dependencies.hashbrown]
+workspace = true
+features = ["rayon"]
+
+[dependencies.indexmap]
+workspace = true
+features = ["rayon"]
+
+[dependencies.smallvec]
+workspace = true
+features = ["union"]
+
+[build-dependencies]
+cbindgen = "0.26"
+
+[features]
+default = ["cbinding"]
+cbinding = []
