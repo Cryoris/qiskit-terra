@@ -32,3 +32,9 @@ pub extern "C" fn bit_term_deallocate(bit: &mut BitTerm) {
         let _ = Box::from_raw(bit);
     }
 }
+
+#[no_mangle]
+#[cfg(feature = "cbinding")]
+pub extern "C" fn bit_term_print(bit: &mut BitTerm) {
+    println!("{:?}", bit);
+}
