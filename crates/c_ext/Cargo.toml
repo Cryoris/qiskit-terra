@@ -8,7 +8,7 @@ license.workspace = true
 [lib]
 name = "qiskit_c_ext"
 doctest = false
-crate-type = ["staticlib", "rlib"]
+crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 qiskit-core.workspace = true
