@@ -12,3 +12,7 @@ doctest = false
 [dependencies]
 bytemuck.workspace = true
 thiserror.workspace = true
+
+[dependencies.pyo3]
+workspace = true
+features = []
