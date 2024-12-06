@@ -1,5 +1,7 @@
 use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::prelude::*;
+use pyo3::sync::GILOnceCell;
+use pyo3::types::{IntoPyDict, PyType};
 use thiserror::Error;
 
 /// Named handle to the alphabet of single-qubit terms.
@@ -158,6 +160,88 @@ impl ::std::convert::TryFrom<u8> for BitTerm {
     }
 }
 
+static BIT_TERM_PY_ENUM: GILOnceCell<Py<PyType>> = GILOnceCell::new();
+static BIT_TERM_INTO_PY: GILOnceCell<[Option<Py<PyAny>>; 16]> = GILOnceCell::new();
+
+/// Construct the Python-space `IntEnum` that represents the same values as the Rust-spce `BitTerm`.
+///
+/// We don't make `BitTerm` a direct `pyclass` because we want the behaviour of `IntEnum`, which
+/// specifically also makes its variants subclasses of the Python `int` type; we use a type-safe
+/// enum in Rust, but from Python space we expect people to (carefully) deal with the raw ints in
+/// Numpy arrays for efficiency.
+///
+/// The resulting class is attached to `SparseObservable` as a class attribute, and its
+/// `__qualname__` is set to reflect this.
+fn make_py_bit_term(py: Python) -> PyResult<Py<PyType>> {
+    let terms = [
+        BitTerm::X,
+        BitTerm::Plus,
+        BitTerm::Minus,
+        BitTerm::Y,
+        BitTerm::Right,
+        BitTerm::Left,
+        BitTerm::Z,
+        BitTerm::Zero,
+        BitTerm::One,
+    ]
+    .into_iter()
+    .flat_map(|term| {
+        let mut out = vec![(term.py_name(), term as u8)];
+        if term.py_name() != term.py_label() {
+            // Also ensure that the labels are created as aliases.  These can't be (easily) accessed
+            // by attribute-getter (dot) syntax, but will work with the item-getter (square-bracket)
+            // syntax, or programmatically with `getattr`.
+            out.push((term.py_label(), term as u8));
+        }
+        out
+    })
+    .collect::<Vec<_>>();
+    let obj = py.import_bound("enum")?.getattr("IntEnum")?.call(
+        ("BitTerm", terms),
+        Some(
+            &[
+                ("module", "qiskit.quantum_info"),
+                ("qualname", "SparseObservable.BitTerm"),
+            ]
+            .into_py_dict_bound(py),
+        ),
+    )?;
+    Ok(obj.downcast_into::<PyType>()?.unbind())
+}
+
+// Return the relevant value from the Python-space sister enumeration.  These are Python-space
+// singletons and subclasses of Python `int`.  We only use this for interaction with "high level"
+// Python space; the efficient Numpy-like array paths use `u8` directly so Numpy can act on it
+// efficiently.
+impl IntoPy<Py<PyAny>> for BitTerm {
+    fn into_py(self, py: Python) -> Py<PyAny> {
+        let terms = BIT_TERM_INTO_PY.get_or_init(py, || {
+            let py_enum = BIT_TERM_PY_ENUM
+                .get_or_try_init(py, || make_py_bit_term(py))
+                .expect("creating a simple Python enum class should be infallible")
+                .bind(py);
+            ::std::array::from_fn(|val| {
+                ::bytemuck::checked::try_cast(val as u8)
+                    .ok()
+                    .map(|term: BitTerm| {
+                        py_enum
+                            .getattr(term.py_name())
+                            .expect("the created `BitTerm` enum should have matching attribute names to the terms")
+                            .unbind()
+                    })
+            })
+        });
+        terms[self as usize]
+            .as_ref()
+            .expect("the lookup table initializer populated a 'Some' in all valid locations")
+            .clone_ref(py)
+    }
+}
+impl ToPyObject for BitTerm {
+    fn to_object(&self, py: Python) -> Py<PyAny> {
+        self.into_py(py)
+    }
+}
 impl<'py> FromPyObject<'py> for BitTerm {
     fn extract_bound(ob: &Bound<'py, PyAny>) -> PyResult<Self> {
         let value = ob
