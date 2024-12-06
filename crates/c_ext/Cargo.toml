@@ -11,30 +11,7 @@ doctest = false
 crate-type = ["staticlib", "rlib"]
 
 [dependencies]
-rayon.workspace = true
-ahash.workspace = true
-rustworkx-core.workspace = true
-bytemuck.workspace = true
-num-complex.workspace = true
-ndarray.workspace = true
-numpy.workspace = true
-thiserror.workspace = true
-approx.workspace = true
-itertools.workspace = true
-qiskit-circuit.workspace = true
-qiskit-accelerate.workspace = true
-
-[dependencies.hashbrown]
-workspace = true
-features = ["rayon"]
-
-[dependencies.indexmap]
-workspace = true
-features = ["rayon"]
-
-[dependencies.smallvec]
-workspace = true
-features = ["union"]
+qiskit-core.workspace = true
 
 [build-dependencies]
 cbindgen = "0.26"

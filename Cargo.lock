@@ -1303,22 +1303,8 @@ dependencies = [
 name = "qiskit-c-ext"
 version = "2.0.0"
 dependencies = [
- "ahash 0.8.11",
- "approx 0.5.1",
- "bytemuck",
  "cbindgen",
- "hashbrown 0.14.5",
- "indexmap 2.7.0",
- "itertools 0.13.0",
- "ndarray",
- "num-complex",
- "numpy",
- "qiskit-accelerate",
- "qiskit-circuit",
- "rayon",
- "rustworkx-core",
- "smallvec",
- "thiserror",
+ "qiskit-core",
 ]
 
 [[package]]
@@ -1338,6 +1324,14 @@ dependencies = [
  "rayon",
  "rustworkx-core",
  "smallvec",
+ "thiserror",
+]
+
+[[package]]
+name = "qiskit-core"
+version = "2.0.0"
+dependencies = [
+ "bytemuck",
  "thiserror",
 ]
 

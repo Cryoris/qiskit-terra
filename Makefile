@@ -85,7 +85,7 @@ clean: coverage_erase ;
 # TODO since the makelist already does other things, we might want to use a
 # CMakeLists.txt to build the C deps (also it handles deps better, but for now we have this here)
 c-header:
-	cargo build --release
+	cargo build -p qiskit-c-ext --release
 	cbindgen --crate qiskit-c-ext --output test/c/qiskit.h --lang C
 
 c-test:
