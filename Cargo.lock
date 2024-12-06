@@ -1304,7 +1304,7 @@ name = "qiskit-c-ext"
 version = "2.0.0"
 dependencies = [
  "cbindgen",
- "qiskit-core",
+ "qiskit-accelerate",
 ]
 
 [[package]]
@@ -1324,15 +1324,6 @@ dependencies = [
  "rayon",
  "rustworkx-core",
  "smallvec",
- "thiserror",
-]
-
-[[package]]
-name = "qiskit-core"
-version = "2.0.0"
-dependencies = [
- "bytemuck",
- "pyo3",
  "thiserror",
 ]
 

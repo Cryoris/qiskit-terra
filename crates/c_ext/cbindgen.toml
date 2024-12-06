@@ -7,4 +7,4 @@ typedef double complex Complex64;
 
 [parse]
 parse_deps = true
-include = ["qiskit-core"]
+include = ["qiskit-accelerate"]

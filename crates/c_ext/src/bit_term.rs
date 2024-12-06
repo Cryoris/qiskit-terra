@@ -10,7 +10,7 @@
 // copyright notice, and modified files need to carry a notice indicating
 // that they have been altered from the originals.
 
-use qiskit_core::bit_term::BitTerm;
+use qiskit_accelerate::sparse_observable::BitTerm;
 
 #[no_mangle]
 #[cfg(feature = "cbinding")]
