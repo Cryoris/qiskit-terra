@@ -905,6 +905,38 @@ impl SparseObservable {
         self.into()
     }
 
+    #[inline]
+    pub fn num_terms(&self) -> usize {
+        self.coeffs.len()
+    }
+
+    /// Create a zero operator on ``num_qubits`` qubits.
+    pub fn zero(num_qubits: u32) -> Self {
+        Self::with_capacity(num_qubits, 0, 0)
+    }
+
+    /// Create an identity operator on ``num_qubits`` qubits.
+    pub fn identity(num_qubits: u32) -> Self {
+        Self {
+            num_qubits,
+            coeffs: vec![Complex64::new(1.0, 0.0)],
+            bit_terms: vec![],
+            indices: vec![],
+            boundaries: vec![0, 0],
+        }
+    }
+
+    /// Clear all the terms from this operator, making it equal to the zero operator again.
+    ///
+    /// This does not change the capacity of the internal allocations, so subsequent addition or
+    /// substraction operations may not need to reallocate.
+    pub fn clear(&mut self) {
+        self.coeffs.clear();
+        self.bit_terms.clear();
+        self.indices.clear();
+        self.boundaries.truncate(1);
+    }
+
     /// Reduce the observable to its canonical form.
     ///
     /// This sums like terms, removing them if the final complex coefficient's absolute value is
@@ -972,6 +1004,21 @@ impl SparseObservable {
             }
         }
         out
+    }
+
+    /// Calculate the adjoint of this observable.
+    ///
+    /// This is well defined in the abstract mathematical sense.  All the terms of the single-qubit
+    /// alphabet are self-adjoint, so the result of this operation is the same observable, except
+    /// its coefficients are all their complex conjugates.
+    fn adjoint(&self) -> SparseObservable {
+        SparseObservable {
+            num_qubits: self.num_qubits,
+            coeffs: self.coeffs.iter().map(|c| c.conj()).collect(),
+            bit_terms: self.bit_terms.clone(),
+            indices: self.indices.clone(),
+            boundaries: self.boundaries.clone(),
+        }
     }
 
     /// Get a view onto a representation of a single sparse term.
@@ -1176,8 +1223,8 @@ impl SparseObservable {
     /// The number of terms in the sum this operator is tracking.
     #[getter]
     #[inline]
-    pub fn num_terms(&self) -> usize {
-        self.coeffs.len()
+    pub fn py_num_terms(&self) -> usize {
+        self.num_terms()
     }
 
     /// The coefficients of each abstract term in in the sum.  This has as many elements as terms in
@@ -1266,8 +1313,8 @@ impl SparseObservable {
     ///         <SparseObservable with 0 terms on 100 qubits: 0.0>
     #[pyo3(signature = (/, num_qubits))]
     #[staticmethod]
-    pub fn zero(num_qubits: u32) -> Self {
-        Self::with_capacity(num_qubits, 0, 0)
+    pub fn py_zero(num_qubits: u32) -> Self {
+        Self::zero(num_qubits)
     }
 
     /// Get the identity operator over the given number of qubits.
@@ -1280,14 +1327,8 @@ impl SparseObservable {
     ///         <SparseObservable with 1 term on 100 qubits: (1+0j)()>
     #[pyo3(signature = (/, num_qubits))]
     #[staticmethod]
-    pub fn identity(num_qubits: u32) -> Self {
-        Self {
-            num_qubits,
-            coeffs: vec![Complex64::new(1.0, 0.0)],
-            bit_terms: vec![],
-            indices: vec![],
-            boundaries: vec![0, 0],
-        }
+    pub fn py_identity(num_qubits: u32) -> Self {
+        Self::identity(num_qubits)
     }
 
     /// Clear all the terms from this operator, making it equal to the zero operator again.
@@ -1302,11 +1343,8 @@ impl SparseObservable {
     ///         >>> obs = SparseObservable.from_list([("IX+-rl", 2.0), ("01YZII", -1j)])
     ///         >>> obs.clear()
     ///         >>> assert obs == SparseObservable.zero(obs.num_qubits)
-    pub fn clear(&mut self) {
-        self.coeffs.clear();
-        self.bit_terms.clear();
-        self.indices.clear();
-        self.boundaries.truncate(1);
+    pub fn py_clear(&mut self) {
+        self.clear();
     }
 
     fn __len__(&self) -> usize {
@@ -2152,14 +2190,8 @@ impl SparseObservable {
     ///         >>> left = SparseObservable.from_list([("XY+-", 1j)])
     ///         >>> right = SparseObservable.from_list([("XY+-", -1j)])
     ///         >>> assert left.adjoint() == right
-    fn adjoint(&self) -> SparseObservable {
-        SparseObservable {
-            num_qubits: self.num_qubits,
-            coeffs: self.coeffs.iter().map(|c| c.conj()).collect(),
-            bit_terms: self.bit_terms.clone(),
-            indices: self.indices.clone(),
-            boundaries: self.boundaries.clone(),
-        }
+    fn py_adjoint(&self) -> SparseObservable {
+        self.adjoint()
     }
 
     /// Calculate the complex conjugation of this observable.
