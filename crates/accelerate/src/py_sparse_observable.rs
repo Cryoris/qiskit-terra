@@ -11,12 +11,13 @@
 // that they have been altered from the originals.
 
 use num_complex::Complex64;
+use num_traits::Zero;
 use numpy::{
     PyArray1, PyArrayDescr, PyArrayDescrMethods, PyArrayLike1, PyReadonlyArray1, PyReadonlyArray2,
     PyUntypedArrayMethods,
 };
 use pyo3::{
-    exceptions::{PyTypeError, PyValueError},
+    exceptions::{PyTypeError, PyValueError, PyZeroDivisionError},
     intern,
     prelude::*,
     sync::GILOnceCell,
@@ -28,7 +29,7 @@ use qiskit_circuit::{
 };
 use std::{
     collections::btree_map,
-    ops::MulAssign,
+    ops::{AddAssign, DivAssign, MulAssign, Neg, SubAssign},
     sync::{Arc, RwLock},
 };
 
@@ -935,9 +936,133 @@ impl PySparseObservable {
         .into_py(py))
     }
 
+    fn __radd__(&self, other: &Bound<PyAny>) -> PyResult<Py<PyAny>> {
+        // No need to handle the `self is other` case here, because `__add__` will get it.
+        let py = other.py();
+        let Some(other) = coerce_to_observable(other)? else {
+            return Ok(py.NotImplemented());
+        };
+        // let other = other.borrow();
+
+        let inner = self.inner.read().unwrap();
+        let other = other.borrow();
+        let other_inner = other.inner.read().unwrap();
+        inner.check_equal_qubits(&other_inner)?;
+        let added = <&SparseObservable as ::std::ops::Add>::add(&other_inner, &inner);
+
+        Ok(Self {
+            inner: Arc::new(RwLock::new(added)),
+        }
+        .into_py(py))
+        // self.check_equal_qubits(&other)?;
+        // Ok((<&SparseObservable as ::std::ops::Add>::add(&other, self)).into_py(py))
+    }
+
+    fn __iadd__(slf_: Bound<PySparseObservable>, other: &Bound<PyAny>) -> PyResult<()> {
+        if slf_.is(other) {
+            let slf_ = slf_.borrow();
+            let mut slf_inner = slf_.inner.write().unwrap();
+            *slf_inner *= Complex64::new(2.0, 0.0);
+            return Ok(());
+        }
+        let Some(other) = coerce_to_observable(other)? else {
+            // This is not well behaved - we _should_ return `NotImplemented` to Python space
+            // without an exception, but limitations in PyO3 prevent this at the moment.  See
+            // https://github.com/PyO3/pyo3/issues/4605.
+            return Err(PyTypeError::new_err(format!(
+                "invalid object for in-place addition of 'SparseObservable': {}",
+                other.repr()?
+            )));
+        };
+        let slf_ = slf_.borrow();
+        let mut slf_inner = slf_.inner.write().unwrap();
+        let other = other.borrow();
+        let other_inner = other.inner.read().unwrap();
+        slf_inner.check_equal_qubits(&other_inner)?;
+        slf_inner.add_assign(&other_inner);
+        Ok(())
+    }
+
+    fn __sub__(slf_: &Bound<Self>, other: &Bound<PyAny>) -> PyResult<Py<PyAny>> {
+        let py = slf_.py();
+        if slf_.is(other) {
+            return Ok(PySparseObservable::zero(slf_.borrow().num_qubits()).into_py(py));
+        }
+        let Some(other) = coerce_to_observable(other)? else {
+            return Ok(py.NotImplemented());
+        };
+
+        let slf_ = slf_.borrow();
+        let slf_inner = slf_.inner.read().unwrap();
+        let other = other.borrow();
+        let other_inner = other.inner.read().unwrap();
+        slf_inner.check_equal_qubits(&other_inner)?;
+        let subtracted = <&SparseObservable as ::std::ops::Sub>::sub(&slf_inner, &other_inner);
+
+        Ok(Self {
+            inner: Arc::new(RwLock::new(subtracted)),
+        }
+        .into_py(py))
+    }
+
+    fn __rsub__(&self, other: &Bound<PyAny>) -> PyResult<Py<PyAny>> {
+        let py = other.py();
+        let Some(other) = coerce_to_observable(other)? else {
+            return Ok(py.NotImplemented());
+        };
+
+        let inner = self.inner.read().unwrap();
+        let other = other.borrow();
+        let other_inner = other.inner.read().unwrap();
+        inner.check_equal_qubits(&other_inner)?;
+        let subtracted = <&SparseObservable as ::std::ops::Sub>::sub(&other_inner, &inner);
+
+        Ok(Self {
+            inner: Arc::new(RwLock::new(subtracted)),
+        }
+        .into_py(py))
+    }
+
+    fn __isub__(slf_: Bound<PySparseObservable>, other: &Bound<PyAny>) -> PyResult<()> {
+        if slf_.is(other) {
+            // This is not strictly the same thing as `a - a` if `a` contains non-finite
+            // floating-point values (`inf - inf` is `NaN`, for example); we don't really have a
+            // clear view on what floating-point guarantees we're going to make right now.
+            slf_.borrow_mut().clear();
+            return Ok(());
+        }
+        let Some(other) = coerce_to_observable(other)? else {
+            // This is not well behaved - we _should_ return `NotImplemented` to Python space
+            // without an exception, but limitations in PyO3 prevent this at the moment.  See
+            // https://github.com/PyO3/pyo3/issues/4605.
+            return Err(PyTypeError::new_err(format!(
+                "invalid object for in-place subtraction of 'SparseObservable': {}",
+                other.repr()?
+            )));
+        };
+        let slf_ = slf_.borrow();
+        let mut slf_inner = slf_.inner.write().unwrap();
+        let other = other.borrow();
+        let other_inner = other.inner.read().unwrap();
+        slf_inner.check_equal_qubits(&other_inner)?;
+        slf_inner.sub_assign(&other_inner);
+        Ok(())
+    }
+
+    fn __pos__(&self) -> Self {
+        self.clone()
+    }
+
+    fn __neg__(&self) -> Self {
+        let inner = self.inner.read().unwrap();
+        let neg = <&SparseObservable as ::std::ops::Neg>::neg(&inner);
+        Self {
+            inner: Arc::new(RwLock::new(neg)),
+        }
+    }
+
     fn __mul__(&self, other: Complex64) -> Self {
         let inner = self.inner.read().unwrap();
-        // TODO can we just use inner.mul(other) here?
         let mult = <&SparseObservable as ::std::ops::Mul<_>>::mul(&inner, other);
         Self {
             inner: Arc::new(RwLock::new(mult)),
@@ -952,6 +1077,25 @@ impl PySparseObservable {
         // the ``inner`` data directly
         let mut inner = self.inner.write().unwrap();
         inner.mul_assign(other);
+    }
+
+    fn __truediv__(&self, other: Complex64) -> PyResult<Self> {
+        if other.is_zero() {
+            return Err(PyZeroDivisionError::new_err("complex division by zero"));
+        }
+        let inner = self.inner.read().unwrap();
+        let div = <&SparseObservable as ::std::ops::Div<_>>::div(&inner, other);
+        Ok(Self {
+            inner: Arc::new(RwLock::new(div)),
+        })
+    }
+    fn __itruediv__(&mut self, other: Complex64) -> PyResult<()> {
+        if other.is_zero() {
+            return Err(PyZeroDivisionError::new_err("complex division by zero"));
+        }
+        let mut inner = self.inner.write().unwrap();
+        inner.div_assign(other);
+        Ok(())
     }
 
     // The documentation for this is inlined into the class-level documentation of
@@ -1111,7 +1255,7 @@ impl ArrayView {
             }
         }
 
-        let borrowed = self.base.borrow_mut(values.py());
+        let borrowed = self.base.borrow(values.py());
         let mut obs = borrowed.inner.write().unwrap();
         match self.slot {
             ArraySlot::Coeffs => set_in_slice::<_, Complex64>(obs.coeffs_mut(), index, values),
