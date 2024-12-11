@@ -110,7 +110,7 @@ impl BitTerm {
     /// Get the label of this `BitTerm` used in Python-space applications.  This is a single-letter
     /// string.
     #[inline]
-    fn py_label(&self) -> &'static str {
+    pub(crate) fn py_label(&self) -> &'static str {
         match self {
             Self::X => "X",
             Self::Plus => "+",
@@ -126,7 +126,7 @@ impl BitTerm {
 
     /// Get the name of this `BitTerm`, which is how Python space refers to the integer constant.
     #[inline]
-    fn py_name(&self) -> &'static str {
+    pub(crate) fn py_name(&self) -> &'static str {
         match self {
             Self::X => "X",
             Self::Plus => "PLUS",
@@ -146,7 +146,7 @@ impl BitTerm {
     /// returning `Ok(None)` for it.  All other letters outside the alphabet return the complete
     /// error condition.
     #[inline]
-    fn try_from_u8(value: u8) -> Result<Option<Self>, BitTermFromU8Error> {
+    pub(crate) fn try_from_u8(value: u8) -> Result<Option<Self>, BitTermFromU8Error> {
         match value {
             b'+' => Ok(Some(BitTerm::Plus)),
             b'-' => Ok(Some(BitTerm::Minus)),
@@ -906,8 +906,53 @@ impl SparseObservable {
     }
 
     #[inline]
+    pub fn num_qubits(&self) -> u32 {
+        self.num_qubits
+    }
+
+    #[inline]
     pub fn num_terms(&self) -> usize {
         self.coeffs.len()
+    }
+
+    #[inline]
+    pub fn coeffs(&self) -> &Vec<Complex64> {
+        &self.coeffs
+    }
+
+    #[inline]
+    pub fn coeffs_mut(&mut self) -> &mut Vec<Complex64> {
+        &mut self.coeffs
+    }
+
+    #[inline]
+    pub fn indices(&self) -> &Vec<u32> {
+        &self.indices
+    }
+
+    #[inline]
+    pub fn indices_mut(&mut self) -> &mut Vec<u32> {
+        &mut self.indices
+    }
+
+    #[inline]
+    pub fn boundaries(&self) -> &Vec<usize> {
+        &self.boundaries
+    }
+
+    #[inline]
+    pub fn boundaries_mut(&mut self) -> &mut Vec<usize> {
+        &mut self.boundaries
+    }
+
+    #[inline]
+    pub fn bit_terms(&self) -> &Vec<BitTerm> {
+        &self.bit_terms
+    }
+
+    #[inline]
+    pub fn bit_terms_mut(&mut self) -> &mut Vec<BitTerm> {
+        &mut self.bit_terms
     }
 
     /// Create a zero operator on ``num_qubits`` qubits.
@@ -1130,7 +1175,7 @@ impl SparseObservable {
     }
 
     /// Return a suitable Python error if two observables do not have equal numbers of qubits.
-    fn check_equal_qubits(&self, other: &SparseObservable) -> PyResult<()> {
+    pub fn check_equal_qubits(&self, other: &SparseObservable) -> PyResult<()> {
         if self.num_qubits != other.num_qubits {
             Err(PyValueError::new_err(format!(
                 "incompatible numbers of qubits: {} and {}",
@@ -1214,13 +1259,15 @@ impl SparseObservable {
     ///
     /// This is not inferable from any other shape or values, since identities are not stored
     /// explicitly.
+    #[pyo3(name = "num_qubits")]
     #[getter]
     #[inline]
-    pub fn num_qubits(&self) -> u32 {
-        self.num_qubits
+    pub fn py_num_qubits(&self) -> u32 {
+        self.num_qubits()
     }
 
     /// The number of terms in the sum this operator is tracking.
+    #[pyo3(name = "num_terms")]
     #[getter]
     #[inline]
     pub fn py_num_terms(&self) -> usize {
@@ -1311,7 +1358,7 @@ impl SparseObservable {
     ///
     ///         >>> SparseObservable.zero(100)
     ///         <SparseObservable with 0 terms on 100 qubits: 0.0>
-    #[pyo3(signature = (/, num_qubits))]
+    #[pyo3(name="zero", signature = (/, num_qubits))]
     #[staticmethod]
     pub fn py_zero(num_qubits: u32) -> Self {
         Self::zero(num_qubits)
@@ -1325,7 +1372,7 @@ impl SparseObservable {
     ///
     ///         >>> SparseObservable.identity(100)
     ///         <SparseObservable with 1 term on 100 qubits: (1+0j)()>
-    #[pyo3(signature = (/, num_qubits))]
+    #[pyo3(name="identity", signature = (/, num_qubits))]
     #[staticmethod]
     pub fn py_identity(num_qubits: u32) -> Self {
         Self::identity(num_qubits)
@@ -1343,6 +1390,7 @@ impl SparseObservable {
     ///         >>> obs = SparseObservable.from_list([("IX+-rl", 2.0), ("01YZII", -1j)])
     ///         >>> obs.clear()
     ///         >>> assert obs == SparseObservable.zero(obs.num_qubits)
+    #[pyo3(name = "clear")]
     pub fn py_clear(&mut self) {
         self.clear();
     }
@@ -2179,6 +2227,7 @@ impl SparseObservable {
 
     /// Calculate the adjoint of this observable.
     ///
+    ///
     /// This is well defined in the abstract mathematical sense.  All the terms of the single-qubit
     /// alphabet are self-adjoint, so the result of this operation is the same observable, except
     /// its coefficients are all their complex conjugates.
@@ -2190,6 +2239,7 @@ impl SparseObservable {
     ///         >>> left = SparseObservable.from_list([("XY+-", 1j)])
     ///         >>> right = SparseObservable.from_list([("XY+-", -1j)])
     ///         >>> assert left.adjoint() == right
+    #[pyo3(name = "adjoint")]
     fn py_adjoint(&self) -> SparseObservable {
         self.adjoint()
     }
@@ -2563,7 +2613,7 @@ impl SparseTermView<'_> {
         }
     }
 
-    fn to_sparse_str(self) -> String {
+    pub fn to_sparse_str(self) -> String {
         let coeff = format!("{}", self.coeff).replace('i', "j");
         let paulis = self
             .indices
