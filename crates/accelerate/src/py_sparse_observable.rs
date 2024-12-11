@@ -29,7 +29,7 @@ use qiskit_circuit::{
 };
 use std::{
     collections::btree_map,
-    ops::{AddAssign, DivAssign, MulAssign, Neg, SubAssign},
+    ops::{AddAssign, DivAssign, MulAssign, SubAssign},
     sync::{Arc, RwLock},
 };
 
@@ -843,6 +843,73 @@ impl PySparseObservable {
         }
     }
 
+    /// Compute the adjoint.
+    fn adjoint(&self) -> Self {
+        let inner = self.inner.read().unwrap();
+        Self {
+            inner: Arc::new(RwLock::new(inner.adjoint())),
+        }
+    }
+
+    /// Compute the transpose.
+    fn transpose(&self) -> Self {
+        let inner = self.inner.read().unwrap();
+        Self {
+            inner: Arc::new(RwLock::new(inner.transpose())),
+        }
+    }
+
+    /// Compute the complex conjugate.
+    fn conjugate(&self) -> Self {
+        let inner = self.inner.read().unwrap();
+        Self {
+            inner: Arc::new(RwLock::new(inner.conjugate())),
+        }
+    }
+
+    // TODO why does this return PyAny and not PySparseObservable?
+    #[pyo3(signature = (other, /))]
+    fn tensor(&self, other: &Bound<PyAny>) -> PyResult<Py<PyAny>> {
+        let py = other.py();
+        let Some(other) = coerce_to_observable(other)? else {
+            return Err(PyTypeError::new_err(format!(
+                "unknown type for tensor: {}",
+                other.get_type().repr()?
+            )));
+        };
+
+        let other = other.borrow();
+        let inner = self.inner.read().unwrap();
+        let other_inner = other.inner.read().unwrap();
+
+        let result = inner.tensor(&other_inner);
+        Ok(Self {
+            inner: Arc::new(RwLock::new(result)),
+        }
+        .into_py(py))
+    }
+
+    #[pyo3(signature = (other, /))]
+    fn expand(&self, other: &Bound<PyAny>) -> PyResult<Py<PyAny>> {
+        let py = other.py();
+        let Some(other) = coerce_to_observable(other)? else {
+            return Err(PyTypeError::new_err(format!(
+                "unknown type for expand: {}",
+                other.get_type().repr()?
+            )));
+        };
+
+        let other = other.borrow();
+        let inner = self.inner.read().unwrap();
+        let other_inner = other.inner.read().unwrap();
+
+        let result = other_inner.tensor(&inner);
+        Ok(Self {
+            inner: Arc::new(RwLock::new(result)),
+        }
+        .into_py(py))
+    }
+
     fn __len__(&self) -> usize {
         self.num_terms()
     }
@@ -1096,6 +1163,27 @@ impl PySparseObservable {
         let mut inner = self.inner.write().unwrap();
         inner.div_assign(other);
         Ok(())
+    }
+
+    fn __xor__(&self, other: &Bound<PyAny>) -> PyResult<Py<PyAny>> {
+        // we cannot just delegate this to ``tensor`` since ``other`` might allow
+        // right-hand-side arithmetic and we have to try deferring to that object,
+        // which is done by returning ``NotImplemented``
+        let py = other.py();
+        let Some(other) = coerce_to_observable(other)? else {
+            return Ok(py.NotImplemented());
+        };
+
+        self.tensor(&other)
+    }
+
+    fn __rxor__(&self, other: &Bound<PyAny>) -> PyResult<Py<PyAny>> {
+        let py = other.py();
+        let Some(other) = coerce_to_observable(other)? else {
+            return Ok(py.NotImplemented());
+        };
+
+        self.expand(&other)
     }
 
     // The documentation for this is inlined into the class-level documentation of

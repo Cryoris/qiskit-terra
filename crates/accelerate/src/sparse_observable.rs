@@ -1056,7 +1056,7 @@ impl SparseObservable {
     /// This is well defined in the abstract mathematical sense.  All the terms of the single-qubit
     /// alphabet are self-adjoint, so the result of this operation is the same observable, except
     /// its coefficients are all their complex conjugates.
-    fn adjoint(&self) -> SparseObservable {
+    pub fn adjoint(&self) -> SparseObservable {
         SparseObservable {
             num_qubits: self.num_qubits,
             coeffs: self.coeffs.iter().map(|c| c.conj()).collect(),
@@ -1064,6 +1064,42 @@ impl SparseObservable {
             indices: self.indices.clone(),
             boundaries: self.boundaries.clone(),
         }
+    }
+
+    /// Calculate the transpose.
+    ///
+    /// This operation transposes the individual bit terms but does directly act
+    /// on the coefficients.
+    pub fn transpose(&self) -> SparseObservable {
+        let mut out = self.clone();
+        for term in out.iter_mut() {
+            for bit_term in term.bit_terms {
+                match bit_term {
+                    BitTerm::Y => {
+                        *term.coeff = -*term.coeff;
+                    }
+                    BitTerm::Right => {
+                        *bit_term = BitTerm::Left;
+                    }
+                    BitTerm::Left => {
+                        *bit_term = BitTerm::Right;
+                    }
+                    _ => (),
+                }
+            }
+        }
+        out
+    }
+
+    /// Calculate the complex conjugate.
+    ///
+    /// This operation equals transposing the observable and complex conjugating the coefficients.
+    pub fn conjugate(&self) -> SparseObservable {
+        let mut out = self.transpose();
+        for coeff in out.coeffs.iter_mut() {
+            *coeff = coeff.conj();
+        }
+        out
     }
 
     /// Get a view onto a representation of a single sparse term.
@@ -2263,12 +2299,8 @@ impl SparseObservable {
     ///
     ///         >>> obs = SparseObservable([("III", 1j), ("Yrl", 0.5)])
     ///         >>> assert obs.conjugate() == SparseObservable([("III", -1j), ("Ylr", -0.5)])
-    fn conjugate(&self) -> SparseObservable {
-        let mut out = self.transpose();
-        for coeff in out.coeffs.iter_mut() {
-            *coeff = coeff.conj();
-        }
-        out
+    fn py_conjugate(&self) -> SparseObservable {
+        self.conjugate()
     }
 
     /// Calculate the matrix transposition of this observable.
@@ -2288,25 +2320,9 @@ impl SparseObservable {
     ///
     ///         >>> obs = SparseObservable([("III", 1j), ("Yrl", 0.5)])
     ///         >>> assert obs.transpose() == SparseObservable([("III", 1j), ("Ylr", -0.5)])
-    fn transpose(&self) -> SparseObservable {
-        let mut out = self.clone();
-        for term in out.iter_mut() {
-            for bit_term in term.bit_terms {
-                match bit_term {
-                    BitTerm::Y => {
-                        *term.coeff = -*term.coeff;
-                    }
-                    BitTerm::Right => {
-                        *bit_term = BitTerm::Left;
-                    }
-                    BitTerm::Left => {
-                        *bit_term = BitTerm::Right;
-                    }
-                    _ => (),
-                }
-            }
-        }
-        out
+    #[pyo3(name = "transpose")]
+    fn py_transpose(&self) -> SparseObservable {
+        self.transpose()
     }
 
     /// Apply a transpiler layout to this :class:`SparseObservable`.
