@@ -64,21 +64,45 @@ impl From<SparseObservableReadError> for PyErr {
 #[derive(Error, Debug)]
 struct SparseObservableWriteError;
 
-impl From<SparseObservableWriteError> for PyErr {
-    fn from(_value: SparseObservableWriteError) -> PyErr {
-        PyRuntimeError::new_err("Poisoned write.")
-    }
-}
-
 impl ::std::fmt::Display for SparseObservableWriteError {
     fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
         write!(f, "Failed acquiring lock for writing.")
     }
 }
 
-// impl From<PoisonError<RwLockReadGuard<'_, SparseObservable>>> for PyErr {
-//     fn from(value: PoisonError<PoisonError<RwLockReadGuard<'_, SparseObservable>>>) -> PyErr {
-//         PyRuntimeError::new_err(value.to_string())
+impl From<SparseObservableWriteError> for PyErr {
+    fn from(value: SparseObservableWriteError) -> PyErr {
+        PyRuntimeError::new_err(value.to_string())
+    }
+}
+
+// struct PySparseObservableIter<'a> {
+//     items: &'a [SparseTermView<'a>],
+//     index: usize,
+// }
+
+// impl<'a> From<&'a PySparseObservable> for PySparseObservableIter<'a> {
+//     fn from(value: &'a PySparseObservable) -> Self {
+//         let inner = value.inner.read().unwrap();
+//         let items = inner.iter().collect::<Vec<_>>();
+//         PySparseObservableIter {
+//             items: &items,
+//             index: 0,
+//         }
+//     }
+// }
+
+// impl<'a> Iterator for PySparseObservableIter<'a> {
+//     type Item = SparseTermView<'a>;
+
+//     fn next(&mut self) -> Option<Self::Item> {
+//         if self.index < self.items.len() {
+//             let item = self.items[self.index];
+//             self.index += 1;
+//             Some(item)
+//         } else {
+//             None
+//         }
 //     }
 // }
 

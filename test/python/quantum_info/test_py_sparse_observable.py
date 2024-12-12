@@ -1806,29 +1806,29 @@ class TestSparseObservable(QiskitTestCase):
         )
         self.assertEqual(obs.pauli_bases(), expected)
 
-    # def test_iteration(self):
-    #     self.assertEqual(list(SparseObservable.zero(5)), [])
-    #     self.assertEqual(tuple(SparseObservable.zero(0)), ())
+    def test_iteration(self):
+        self.assertEqual(list(SparseObservable.zero(5)), [])
+        self.assertEqual(tuple(SparseObservable.zero(0)), ())
 
-    #     obs = SparseObservable.from_sparse_list(
-    #         [
-    #             ("Xrl", (4, 2, 1), 2j),
-    #             ("", (), 0.5),
-    #             ("01", (3, 0), -0.25),
-    #             ("+-", (2, 1), 1.0),
-    #             ("YZ", (4, 1), 1j),
-    #         ],
-    #         num_qubits=5,
-    #     )
-    #     bit_term = SparseObservable.BitTerm
-    #     expected = [
-    #         SparseObservable.Term(5, 2j, [bit_term.LEFT, bit_term.RIGHT, bit_term.X], [1, 2, 4]),
-    #         SparseObservable.Term(5, 0.5, [], []),
-    #         SparseObservable.Term(5, -0.25, [bit_term.ONE, bit_term.ZERO], [0, 3]),
-    #         SparseObservable.Term(5, 1.0, [bit_term.MINUS, bit_term.PLUS], [1, 2]),
-    #         SparseObservable.Term(5, 1j, [bit_term.Z, bit_term.Y], [1, 4]),
-    #     ]
-    #     self.assertEqual(list(obs), expected)
+        obs = SparseObservable.from_sparse_list(
+            [
+                ("Xrl", (4, 2, 1), 2j),
+                ("", (), 0.5),
+                ("01", (3, 0), -0.25),
+                ("+-", (2, 1), 1.0),
+                ("YZ", (4, 1), 1j),
+            ],
+            num_qubits=5,
+        )
+        bit_term = SparseObservable.BitTerm
+        expected = [
+            SparseObservable.Term(5, 2j, [bit_term.LEFT, bit_term.RIGHT, bit_term.X], [1, 2, 4]),
+            SparseObservable.Term(5, 0.5, [], []),
+            SparseObservable.Term(5, -0.25, [bit_term.ONE, bit_term.ZERO], [0, 3]),
+            SparseObservable.Term(5, 1.0, [bit_term.MINUS, bit_term.PLUS], [1, 2]),
+            SparseObservable.Term(5, 1j, [bit_term.Z, bit_term.Y], [1, 4]),
+        ]
+        self.assertEqual(list(obs), expected)
 
     def test_indexing(self):
         obs = SparseObservable.from_sparse_list(
