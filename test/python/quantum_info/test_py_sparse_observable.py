@@ -942,7 +942,13 @@ class TestSparseObservable(QiskitTestCase):
         self.assertEqual(obs.bit_terms[0], SparseObservable.BitTerm.Y)
         # Make sure that Rust-space actually returns the enum value, not just an `int` (which could
         # have compared equal).
+
+        # TODO This test will fail as long as IntoPy<..> for BitTerm
+        # uses SparseObservable's make_py_bit_term. Once we delete the py-part of
+        # SparseObservable, we can update that function to use PySparseObservable.BitTerm
+        # and this test should pass again
         self.assertIsInstance(obs.bit_terms[0], SparseObservable.BitTerm)
+
         self.assertEqual(obs.boundaries[-2], 3)
         with self.assertRaises(IndexError):
             _ = obs.coeffs[10]
@@ -1777,28 +1783,28 @@ class TestSparseObservable(QiskitTestCase):
         with self.assertRaisesRegex(ValueError, "cannot shrink"):
             obs.apply_layout(layout, num_qubits=2)
 
-    # def test_pauli_bases(self):
-    #     obs = SparseObservable.from_list(
-    #         [
-    #             ("IIIII", 1.0),
-    #             ("IXYZI", 2.0),
-    #             ("+-II+", 1j),
-    #             ("rlrlr", -0.5),
-    #             ("01010", -0.25),
-    #             ("rlYII", 1.0),
-    #         ]
-    #     )
-    #     expected = PauliList(
-    #         [
-    #             Pauli("IIIII"),
-    #             Pauli("IXYZI"),
-    #             Pauli("XXIIX"),
-    #             Pauli("YYYYY"),
-    #             Pauli("ZZZZZ"),
-    #             Pauli("YYYII"),
-    #         ]
-    #     )
-    #     self.assertEqual(obs.pauli_bases(), expected)
+    def test_pauli_bases(self):
+        obs = SparseObservable.from_list(
+            [
+                ("IIIII", 1.0),
+                ("IXYZI", 2.0),
+                ("+-II+", 1j),
+                ("rlrlr", -0.5),
+                ("01010", -0.25),
+                ("rlYII", 1.0),
+            ]
+        )
+        expected = PauliList(
+            [
+                Pauli("IIIII"),
+                Pauli("IXYZI"),
+                Pauli("XXIIX"),
+                Pauli("YYYYY"),
+                Pauli("ZZZZZ"),
+                Pauli("YYYII"),
+            ]
+        )
+        self.assertEqual(obs.pauli_bases(), expected)
 
     # def test_iteration(self):
     #     self.assertEqual(list(SparseObservable.zero(5)), [])
@@ -1824,46 +1830,46 @@ class TestSparseObservable(QiskitTestCase):
     #     ]
     #     self.assertEqual(list(obs), expected)
 
-    # def test_indexing(self):
-    #     obs = SparseObservable.from_sparse_list(
-    #         [
-    #             ("Xrl", (4, 2, 1), 2j),
-    #             ("", (), 0.5),
-    #             ("01", (3, 0), -0.25),
-    #             ("+-", (2, 1), 1.0),
-    #             ("YZ", (4, 1), 1j),
-    #         ],
-    #         num_qubits=5,
-    #     )
-    #     bit_term = SparseObservable.BitTerm
-    #     expected = [
-    #         SparseObservable.Term(5, 2j, [bit_term.LEFT, bit_term.RIGHT, bit_term.X], [1, 2, 4]),
-    #         SparseObservable.Term(5, 0.5, [], []),
-    #         SparseObservable.Term(5, -0.25, [bit_term.ZERO, bit_term.ONE], [3, 0]),
-    #         SparseObservable.Term(5, 1.0, [bit_term.MINUS, bit_term.PLUS], [1, 2]),
-    #         SparseObservable.Term(5, 1j, [bit_term.Y, bit_term.Z], [4, 1]),
-    #     ]
-    #     self.assertEqual(obs[0], expected[0])
-    #     self.assertEqual(obs[-2], expected[-2])
-    #     self.assertEqual(obs[2:4], SparseObservable(expected[2:4]))
-    #     self.assertEqual(obs[1::2], SparseObservable(expected[1::2]))
-    #     self.assertEqual(obs[:], SparseObservable(expected))
-    #     self.assertEqual(obs[-1:-4:-1], SparseObservable(expected[-1:-4:-1]))
+    def test_indexing(self):
+        obs = SparseObservable.from_sparse_list(
+            [
+                ("Xrl", (4, 2, 1), 2j),
+                ("", (), 0.5),
+                ("01", (3, 0), -0.25),
+                ("+-", (2, 1), 1.0),
+                ("YZ", (4, 1), 1j),
+            ],
+            num_qubits=5,
+        )
+        bit_term = SparseObservable.BitTerm
+        expected = [
+            SparseObservable.Term(5, 2j, [bit_term.LEFT, bit_term.RIGHT, bit_term.X], [1, 2, 4]),
+            SparseObservable.Term(5, 0.5, [], []),
+            SparseObservable.Term(5, -0.25, [bit_term.ZERO, bit_term.ONE], [3, 0]),
+            SparseObservable.Term(5, 1.0, [bit_term.MINUS, bit_term.PLUS], [1, 2]),
+            SparseObservable.Term(5, 1j, [bit_term.Y, bit_term.Z], [4, 1]),
+        ]
+        self.assertEqual(obs[0], expected[0])
+        self.assertEqual(obs[-2], expected[-2])
+        self.assertEqual(obs[2:4], SparseObservable(expected[2:4]))
+        self.assertEqual(obs[1::2], SparseObservable(expected[1::2]))
+        self.assertEqual(obs[:], SparseObservable(expected))
+        self.assertEqual(obs[-1:-4:-1], SparseObservable(expected[-1:-4:-1]))
 
-    # @ddt.data(
-    #     SparseObservable.identity(0),
-    #     SparseObservable.identity(1_000),
-    #     SparseObservable.from_label("IIXIZI"),
-    #     SparseObservable.from_label("X"),
-    #     SparseObservable.from_list([("YIXZII", -0.25)]),
-    #     SparseObservable.from_list([("01rl+-", 0.25 + 0.5j)]),
-    # )
-    # def test_term_repr(self, obs):
-    #     # The purpose of this is just to test that the `repr` doesn't crash, rather than asserting
-    #     # that it has any particular form.
-    #     term = obs[0]
-    #     self.assertIsInstance(repr(term), str)
-    #     self.assertIn("SparseObservable.Term", repr(term))
+    @ddt.data(
+        SparseObservable.identity(0),
+        SparseObservable.identity(1_000),
+        SparseObservable.from_label("IIXIZI"),
+        SparseObservable.from_label("X"),
+        SparseObservable.from_list([("YIXZII", -0.25)]),
+        SparseObservable.from_list([("01rl+-", 0.25 + 0.5j)]),
+    )
+    def test_term_repr(self, obs):
+        # The purpose of this is just to test that the `repr` doesn't crash, rather than asserting
+        # that it has any particular form.
+        term = obs[0]
+        self.assertIsInstance(repr(term), str)
+        self.assertIn("SparseObservable.Term", repr(term))
 
     # @ddt.data(
     #     SparseObservable.identity(0),

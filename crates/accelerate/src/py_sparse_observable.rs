@@ -10,11 +10,12 @@
 // copyright notice, and modified files need to carry a notice indicating
 // that they have been altered from the originals.
 
+use ndarray::Array2;
 use num_complex::Complex64;
 use num_traits::Zero;
 use numpy::{
-    PyArray1, PyArrayDescr, PyArrayDescrMethods, PyArrayLike1, PyReadonlyArray1, PyReadonlyArray2,
-    PyUntypedArrayMethods,
+    PyArray1, PyArray2, PyArrayDescr, PyArrayDescrMethods, PyArrayLike1, PyReadonlyArray1,
+    PyReadonlyArray2, PyUntypedArrayMethods,
 };
 use pyo3::{
     exceptions::{PyRuntimeError, PyTypeError, PyValueError, PyZeroDivisionError},
@@ -39,11 +40,11 @@ use crate::sparse_observable::{
 };
 
 static PAULI_TYPE: ImportOnceCell = ImportOnceCell::new("qiskit.quantum_info", "Pauli");
+static PAULI_LIST_TYPE: ImportOnceCell = ImportOnceCell::new("qiskit.quantum_info", "PauliList");
 static SPARSE_PAULI_OP_TYPE: ImportOnceCell =
     ImportOnceCell::new("qiskit.quantum_info", "SparsePauliOp");
 
 static BIT_TERM_PY_ENUM: GILOnceCell<Py<PyType>> = GILOnceCell::new();
-static BIT_TERM_INTO_PY: GILOnceCell<[Option<Py<PyAny>>; 16]> = GILOnceCell::new();
 
 #[derive(Error, Debug)]
 struct SparseObservableReadError;
@@ -119,7 +120,7 @@ fn make_py_bit_term(py: Python) -> PyResult<Py<PyType>> {
         Some(
             &[
                 ("module", "qiskit.quantum_info"),
-                ("qualname", "SparseObservable.BitTerm"),
+                ("qualname", "PySparseObservable.BitTerm"),
             ]
             .into_py_dict_bound(py),
         ),
@@ -127,7 +128,7 @@ fn make_py_bit_term(py: Python) -> PyResult<Py<PyType>> {
     Ok(obj.downcast_into::<PyType>()?.unbind())
 }
 
-#[pyclass(name = "PySparseObservable", module = "qiskit.quantum_info")]
+#[pyclass(name = "PySparseObservable", module = "qiskit.quantum_info", sequence)]
 #[derive(Debug)]
 pub struct PySparseObservable {
     inner: Arc<RwLock<SparseObservable>>,
@@ -214,10 +215,6 @@ impl PySparseObservable {
             data.get_type().repr()?,
         )))
     }
-    /// The number of qubits the operator acts on.
-    ///
-    /// This is not inferable from any other shape or values, since identities are not stored
-    /// explicitly.
 
     /// Get a copy of this observable.
     ///
@@ -232,6 +229,10 @@ impl PySparseObservable {
         self.clone()
     }
 
+    /// The number of qubits the operator acts on.
+    ///
+    /// This is not inferable from any other shape or values, since identities are not stored
+    /// explicitly.
     #[getter]
     #[inline]
     pub fn num_qubits(&self) -> PyResult<u32> {
@@ -1017,6 +1018,40 @@ impl PySparseObservable {
         Ok(Self {
             inner: Arc::new(RwLock::new(out)),
         })
+    }
+
+    /// Get a :class:`.PauliList` object that represents the measurement basis needed for each term
+    /// (in order) in this observable.
+    ///
+    /// For example, the projector ``0l+`` will return a Pauli ``ZXY``.  The resulting
+    /// :class:`.Pauli` is dense, in the sense that explicit identities are stored.  An identity in
+    /// the Pauli output does not require a concrete measurement.
+    ///
+    /// This will return an entry in the Pauli list for every term in the sum.
+    ///
+    /// Returns:
+    ///     :class:`.PauliList`: the Pauli operator list representing the necessary measurement
+    ///     bases.
+    #[pyo3(name = "pauli_bases")]
+    fn py_pauli_bases<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        let inner = self.inner.read().map_err(|_| SparseObservableReadError)?;
+        let mut x = Array2::from_elem([inner.num_terms(), inner.num_qubits() as usize], false);
+        let mut z = Array2::from_elem([inner.num_terms(), inner.num_qubits() as usize], false);
+        for (loc, term) in inner.iter().enumerate() {
+            let mut x_row = x.row_mut(loc);
+            let mut z_row = z.row_mut(loc);
+            for (bit_term, index) in term.bit_terms.iter().zip(term.indices) {
+                x_row[*index as usize] = bit_term.has_x_component();
+                z_row[*index as usize] = bit_term.has_z_component();
+            }
+        }
+        PAULI_LIST_TYPE
+            .get_bound(py)
+            .getattr(intern!(py, "from_symplectic"))?
+            .call1((
+                PyArray2::from_owned_array_bound(py, z),
+                PyArray2::from_owned_array_bound(py, x),
+            ))
     }
 
     fn __len__(&self) -> PyResult<usize> {
