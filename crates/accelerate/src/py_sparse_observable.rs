@@ -34,7 +34,9 @@ use std::{
 };
 use thiserror::Error;
 
-use crate::sparse_observable::{BitTerm, LabelError, SparseObservable, SparseTerm, SparseTermView};
+use crate::sparse_observable::{
+    BitTerm, CoherenceError, LabelError, SparseObservable, SparseTerm, SparseTermView,
+};
 
 static PAULI_TYPE: ImportOnceCell = ImportOnceCell::new("qiskit.quantum_info", "Pauli");
 static SPARSE_PAULI_OP_TYPE: ImportOnceCell =
@@ -946,6 +948,75 @@ impl PySparseObservable {
             inner: Arc::new(RwLock::new(result)),
         }
         .into_py(py))
+    }
+
+    /// Apply a transpiler layout to this :class:`SparseObservable`.
+    ///
+    /// Typically you will have defined your observable in terms of the virtual qubits of the
+    /// circuits you will use to prepare states.  After transpilation, the virtual qubits are mapped
+    /// to particular physical qubits on a device, which may be wider than your circuit.  That
+    /// mapping can also change over the course of the circuit.  This method transforms the input
+    /// observable on virtual qubits to an observable that is suitable to apply immediately after
+    /// the fully transpiled *physical* circuit.
+    ///
+    /// Args:
+    ///     layout (TranspileLayout | list[int] | None): The layout to apply.  Most uses of this
+    ///         function should pass the :attr:`.QuantumCircuit.layout` field from a circuit that
+    ///         was transpiled for hardware.  In addition, you can pass a list of new qubit indices.
+    ///         If given as explicitly ``None``, no remapping is applied (but you can still use
+    ///         ``num_qubits`` to expand the observable).
+    ///     num_qubits (int | None): The number of qubits to expand the observable to.  If not
+    ///         supplied, the output will be as wide as the given :class:`.TranspileLayout`, or the
+    ///         same width as the input if the ``layout`` is given in another form.
+    ///
+    /// Returns:
+    ///     A new :class:`SparseObservable` with the provided layout applied.
+    #[pyo3(signature = (/, layout, num_qubits=None))]
+    fn apply_layout(&self, layout: Bound<PyAny>, num_qubits: Option<u32>) -> PyResult<Self> {
+        let py = layout.py();
+        let inner = self.inner.read().map_err(|_| SparseObservableReadError)?;
+        let check_inferred_qubits = |inferred: u32| -> PyResult<u32> {
+            if inferred < inner.num_qubits() {
+                return Err(CoherenceError::NotEnoughQubits {
+                    current: inner.num_qubits() as usize,
+                    target: inferred as usize,
+                }
+                .into());
+            }
+            Ok(inferred)
+        };
+
+        // get the number of qubits in the layout and map the layout to Vec<u32> to
+        // call SparseObservable.apply_layout
+        let (num_qubits, layout): (u32, Option<Vec<u32>>) = if layout.is_none() {
+            // if the layout is none,
+            (num_qubits.unwrap_or(inner.num_qubits()), None)
+        } else {
+            if layout.is_instance(
+                &py.import_bound(intern!(py, "qiskit.transpiler"))?
+                    .getattr(intern!(py, "TranspileLayout"))?,
+            )? {
+                (
+                    check_inferred_qubits(
+                        layout.getattr(intern!(py, "_output_qubit_list"))?.len()? as u32,
+                    )?,
+                    Some(
+                        layout
+                            .call_method0(intern!(py, "final_index_layout"))?
+                            .extract::<Vec<u32>>()?,
+                    ),
+                )
+            } else {
+                (
+                    check_inferred_qubits(num_qubits.unwrap_or(inner.num_qubits()))?,
+                    Some(layout.extract()?),
+                )
+            }
+        };
+        let out = inner.apply_layout(layout.as_deref(), num_qubits)?;
+        Ok(Self {
+            inner: Arc::new(RwLock::new(out)),
+        })
     }
 
     fn __len__(&self) -> PyResult<usize> {

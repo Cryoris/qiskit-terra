@@ -327,6 +327,8 @@ pub enum CoherenceError {
     DuplicateIndices,
     #[error("the provided qubit mapping does not account for all contained qubits")]
     IndexMapTooSmall,
+    #[error("cannot shrink the qubit count in an observable from {current} to {target}")]
+    NotEnoughQubits { current: usize, target: usize },
 }
 impl From<CoherenceError> for PyErr {
     fn from(value: CoherenceError) -> PyErr {
@@ -1193,6 +1195,43 @@ impl SparseObservable {
             order.clear();
         }
         Ok(())
+    }
+
+    /// Apply a transpiler layout.
+    pub fn apply_layout(
+        &self,
+        layout: Option<&[u32]>,
+        num_qubits: u32,
+    ) -> Result<Self, CoherenceError> {
+        match layout {
+            None => {
+                let mut out = self.clone();
+                if num_qubits < self.num_qubits {
+                    // return Err(CoherenceError::BitIndexTooHigh);
+                    return Err(CoherenceError::NotEnoughQubits {
+                        current: self.num_qubits as usize,
+                        target: num_qubits as usize,
+                    });
+                }
+                out.num_qubits = num_qubits;
+                return Ok(out);
+            }
+            Some(layout) => {
+                if layout.len() < self.num_qubits as usize {
+                    return Err(CoherenceError::IndexMapTooSmall.into());
+                }
+                if layout.iter().any(|qubit| *qubit >= num_qubits) {
+                    return Err(CoherenceError::BitIndexTooHigh.into());
+                }
+                if layout.iter().collect::<HashSet<_>>().len() != layout.len() {
+                    return Err(CoherenceError::DuplicateIndices.into());
+                }
+                let mut out = self.clone();
+                out.num_qubits = num_qubits;
+                out.relabel_qubits_from_slice(&layout)?;
+                Ok(out)
+            }
+        }
     }
 
     /// Add a single term to this operator.
@@ -2299,6 +2338,7 @@ impl SparseObservable {
     ///
     ///         >>> obs = SparseObservable([("III", 1j), ("Yrl", 0.5)])
     ///         >>> assert obs.conjugate() == SparseObservable([("III", -1j), ("Ylr", -0.5)])
+    #[pyo3(name = "conjugate")]
     fn py_conjugate(&self) -> SparseObservable {
         self.conjugate()
     }
@@ -2351,49 +2391,43 @@ impl SparseObservable {
         let py = layout.py();
         let check_inferred_qubits = |inferred: u32| -> PyResult<u32> {
             if inferred < self.num_qubits {
-                return Err(PyValueError::new_err(format!(
-                    "cannot shrink the qubit count in an observable from {} to {}",
-                    self.num_qubits, inferred
-                )));
+                return Err(CoherenceError::NotEnoughQubits {
+                    current: self.num_qubits as usize,
+                    target: inferred as usize,
+                }
+                .into());
             }
             Ok(inferred)
         };
-        if layout.is_none() {
-            let mut out = self.clone();
-            out.num_qubits = check_inferred_qubits(num_qubits.unwrap_or(self.num_qubits))?;
-            return Ok(out);
-        }
-        let (num_qubits, layout) = if layout.is_instance(
-            &py.import_bound(intern!(py, "qiskit.transpiler"))?
-                .getattr(intern!(py, "TranspileLayout"))?,
-        )? {
-            (
-                check_inferred_qubits(
-                    layout.getattr(intern!(py, "_output_qubit_list"))?.len()? as u32
-                )?,
-                layout
-                    .call_method0(intern!(py, "final_index_layout"))?
-                    .extract::<Vec<u32>>()?,
-            )
+
+        // get the number of qubits in the layout and map the layout to Vec<u32> to
+        // call SparseObservable.apply_layout
+        let (num_qubits, layout): (u32, Option<Vec<u32>>) = if layout.is_none() {
+            // if the layout is none,
+            (num_qubits.unwrap_or(self.num_qubits), None)
         } else {
-            (
-                check_inferred_qubits(num_qubits.unwrap_or(self.num_qubits))?,
-                layout.extract()?,
-            )
+            if layout.is_instance(
+                &py.import_bound(intern!(py, "qiskit.transpiler"))?
+                    .getattr(intern!(py, "TranspileLayout"))?,
+            )? {
+                (
+                    check_inferred_qubits(
+                        layout.getattr(intern!(py, "_output_qubit_list"))?.len()? as u32,
+                    )?,
+                    Some(
+                        layout
+                            .call_method0(intern!(py, "final_index_layout"))?
+                            .extract::<Vec<u32>>()?,
+                    ),
+                )
+            } else {
+                (
+                    check_inferred_qubits(num_qubits.unwrap_or(self.num_qubits))?,
+                    Some(layout.extract()?),
+                )
+            }
         };
-        if layout.len() < self.num_qubits as usize {
-            return Err(CoherenceError::IndexMapTooSmall.into());
-        }
-        if layout.iter().any(|qubit| *qubit >= num_qubits) {
-            return Err(CoherenceError::BitIndexTooHigh.into());
-        }
-        if layout.iter().collect::<HashSet<_>>().len() != layout.len() {
-            return Err(CoherenceError::DuplicateIndices.into());
-        }
-        let mut out = self.clone();
-        out.num_qubits = num_qubits;
-        out.relabel_qubits_from_slice(&layout)?;
-        Ok(out)
+        Ok(self.apply_layout(layout.as_deref(), num_qubits)?)
     }
 
     /// Get a :class:`.PauliList` object that represents the measurement basis needed for each term
