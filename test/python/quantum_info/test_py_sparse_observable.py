@@ -247,12 +247,12 @@ class TestSparseObservable(QiskitTestCase):
         }
         self.assertEqual({label: SparseObservable.BitTerm[label] for label in labels}, labels)
 
-    # @ddt.idata(single_cases())
-    # def test_pickle(self, observable):
-    #     self.assertEqual(observable, copy.copy(observable))
-    #     self.assertIsNot(observable, copy.copy(observable))
-    #     self.assertEqual(observable, copy.deepcopy(observable))
-    #     self.assertEqual(observable, pickle.loads(pickle.dumps(observable)))
+    @ddt.idata(single_cases())
+    def test_pickle(self, observable):
+        self.assertEqual(observable, copy.copy(observable))
+        self.assertIsNot(observable, copy.copy(observable))
+        self.assertEqual(observable, copy.deepcopy(observable))
+        self.assertEqual(observable, pickle.loads(pickle.dumps(observable)))
 
     @ddt.data(
         # This is every combination of (0, 1, many) for (terms, qubits, non-identites per term).

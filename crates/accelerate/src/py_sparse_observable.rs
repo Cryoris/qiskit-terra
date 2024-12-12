@@ -125,7 +125,7 @@ fn make_py_bit_term(py: Python) -> PyResult<Py<PyType>> {
     Ok(obj.downcast_into::<PyType>()?.unbind())
 }
 
-#[pyclass(name = "PySparseObservable")]
+#[pyclass(name = "PySparseObservable", module = "qiskit.quantum_info")]
 #[derive(Debug)]
 pub struct PySparseObservable {
     inner: Arc<RwLock<SparseObservable>>,
@@ -1019,6 +1019,25 @@ impl PySparseObservable {
             "<SparseObservable with {} on {}: {}>",
             str_num_terms, str_num_qubits, str_terms
         ))
+    }
+
+    fn __reduce__(&self, py: Python) -> PyResult<Py<PyAny>> {
+        // we acquire the read lock once here and use the internal methods
+        // to avoid checking and acquiring the lock in every method call
+        let inner = self.inner.read().map_err(|_| SparseObservableReadError)?;
+        let bit_terms: &[u8] = ::bytemuck::cast_slice(&inner.bit_terms());
+        Ok((
+            py.get_type_bound::<Self>().getattr("from_raw_parts")?,
+            (
+                inner.num_qubits(),
+                PyArray1::from_slice_bound(py, inner.coeffs()),
+                PyArray1::from_slice_bound(py, bit_terms),
+                PyArray1::from_slice_bound(py, inner.indices()),
+                PyArray1::from_slice_bound(py, inner.boundaries()),
+                false,
+            ),
+        )
+            .into_py(py))
     }
 
     fn __add__(slf_: &Bound<Self>, other: &Bound<PyAny>) -> PyResult<Py<PyAny>> {
