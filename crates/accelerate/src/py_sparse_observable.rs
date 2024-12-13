@@ -14,8 +14,8 @@ use ndarray::Array2;
 use num_complex::Complex64;
 use num_traits::Zero;
 use numpy::{
-    PyArray1, PyArray2, PyArrayDescr, PyArrayDescrMethods, PyArrayLike1, PyReadonlyArray1,
-    PyReadonlyArray2, PyUntypedArrayMethods,
+    PyArray1, PyArray2, PyArrayDescr, PyArrayDescrMethods, PyArrayLike1, PyArrayMethods,
+    PyReadonlyArray1, PyReadonlyArray2, PyUntypedArrayMethods,
 };
 use pyo3::{
     exceptions::{PyRuntimeError, PyTypeError, PyValueError, PyZeroDivisionError},
@@ -76,35 +76,184 @@ impl From<SparseObservableWriteError> for PyErr {
     }
 }
 
-// struct PySparseObservableIter<'a> {
-//     items: &'a [SparseTermView<'a>],
-//     index: usize,
-// }
+#[pyclass(name = "PyTerm", frozen, module = "qiskit.quantum_info")]
+#[derive(Clone, Debug)]
+struct PySparseTerm {
+    inner: Arc<RwLock<SparseTerm>>,
+}
 
-// impl<'a> From<&'a PySparseObservable> for PySparseObservableIter<'a> {
-//     fn from(value: &'a PySparseObservable) -> Self {
-//         let inner = value.inner.read().unwrap();
-//         let items = inner.iter().collect::<Vec<_>>();
-//         PySparseObservableIter {
-//             items: &items,
-//             index: 0,
-//         }
-//     }
-// }
+#[pymethods]
+impl PySparseTerm {
+    // Mark the Python class as being defined "within" the `SparseObservable` class namespace.
+    #[classattr]
+    #[pyo3(name = "__qualname__")]
+    fn type_qualname() -> &'static str {
+        "PySparseObservable.Term" // TODO change to SparseObservable.Term
+    }
 
-// impl<'a> Iterator for PySparseObservableIter<'a> {
-//     type Item = SparseTermView<'a>;
+    #[new]
+    #[pyo3(signature = (/, num_qubits, coeff, bit_terms, indices))]
+    fn py_new(
+        num_qubits: u32,
+        coeff: Complex64,
+        bit_terms: Vec<BitTerm>,
+        indices: Vec<u32>,
+    ) -> PyResult<Self> {
+        if bit_terms.len() != indices.len() {
+            return Err(CoherenceError::MismatchedItemCount {
+                bit_terms: bit_terms.len(),
+                indices: indices.len(),
+            }
+            .into());
+        }
+        let mut order = (0..bit_terms.len()).collect::<Vec<_>>();
+        order.sort_unstable_by_key(|a| indices[*a]);
+        let bit_terms = order.iter().map(|i| bit_terms[*i]).collect();
+        let mut sorted_indices = Vec::<u32>::with_capacity(order.len());
+        for i in order {
+            let index = indices[i];
+            if sorted_indices
+                .last()
+                .map(|prev| *prev >= index)
+                .unwrap_or(false)
+            {
+                return Err(CoherenceError::UnsortedIndices.into());
+            }
+            sorted_indices.push(index)
+        }
+        let inner = SparseTerm::new(
+            num_qubits,
+            coeff,
+            bit_terms,
+            sorted_indices.into_boxed_slice(),
+        );
+        Ok(PySparseTerm {
+            inner: Arc::new(RwLock::new(inner)),
+        })
+    }
 
-//     fn next(&mut self) -> Option<Self::Item> {
-//         if self.index < self.items.len() {
-//             let item = self.items[self.index];
-//             self.index += 1;
-//             Some(item)
-//         } else {
-//             None
-//         }
-//     }
-// }
+    /// Convert this term to a complete :class:`SparseObservable`.
+    fn to_observable(&self) -> PyResult<PySparseObservable> {
+        let inner = self.inner.read().map_err(|_| SparseObservableReadError)?;
+        let obs = SparseObservable::new(
+            inner.num_qubits,
+            vec![inner.coeff],
+            inner.bit_terms.to_vec(),
+            inner.indices.to_vec(),
+            vec![0, inner.bit_terms.len()],
+        )?;
+        Ok(PySparseObservable {
+            inner: Arc::new(RwLock::new(obs)),
+        })
+    }
+
+    fn __eq__(slf: Bound<Self>, other: Bound<PyAny>) -> PyResult<bool> {
+        if slf.is(&other) {
+            return Ok(true);
+        }
+        let Ok(other) = other.downcast_into::<Self>() else {
+            return Ok(false);
+        };
+        let slf = slf.borrow();
+        let other = other.borrow();
+        let slf_inner = slf.inner.read().map_err(|_| SparseObservableReadError)?;
+        let other_inner = other.inner.read().map_err(|_| SparseObservableReadError)?;
+        Ok(slf_inner.eq(&other_inner))
+    }
+
+    fn __repr__(&self) -> PyResult<String> {
+        let inner = self.inner.read().map_err(|_| SparseObservableReadError)?;
+        Ok(format!(
+            "<{} on {} qubit{}: {}>",
+            Self::type_qualname(),
+            inner.num_qubits,
+            if inner.num_qubits == 1 { "" } else { "s" },
+            inner.view().to_sparse_str(),
+        ))
+    }
+
+    fn __getnewargs__(slf_: Bound<Self>, py: Python) -> Py<PyAny> {
+        let borrowed = slf_.borrow();
+        let inner = borrowed.inner.read().unwrap();
+        (
+            inner.num_qubits,
+            inner.coeff,
+            Self::get_bit_terms(slf_.clone()),
+            Self::get_indices(slf_),
+        )
+            .into_py(py)
+    }
+
+    /// Get a copy of this term.
+    #[pyo3(name = "copy")]
+    fn py_copy(&self) -> Self {
+        self.clone()
+    }
+
+    /// Read-only view onto the individual single-qubit terms.
+    ///
+    /// The only valid values in the array are those with a corresponding
+    /// :class:`~SparseObservable.BitTerm`.
+    #[getter]
+    fn get_bit_terms(slf_: Bound<Self>) -> Bound<PyArray1<u8>> {
+        let borrowed = slf_.borrow();
+        let inner = borrowed.inner.read().unwrap();
+        let bit_terms = &inner.bit_terms;
+        let arr = ::ndarray::aview1(::bytemuck::cast_slice::<_, u8>(bit_terms));
+        // SAFETY: in order to call this function, the lifetime of `self` must be managed by Python.
+        // We tie the lifetime of the array to `slf_`, and there are no public ways to modify the
+        // `Box<[BitTerm]>` allocation (including dropping or reallocating it) other than the entire
+        // object getting dropped, which Python will keep safe.
+        let out = unsafe { PyArray1::borrow_from_array_bound(&arr, slf_.into_any()) };
+        out.readwrite().make_nonwriteable();
+        out
+    }
+
+    /// Read-only view onto the indices of each non-identity single-qubit term.
+    ///
+    /// The indices will always be in sorted order.
+    #[getter]
+    fn get_indices(slf_: Bound<Self>) -> Bound<PyArray1<u32>> {
+        let borrowed = slf_.borrow();
+        let inner = borrowed.inner.read().unwrap();
+        let indices = &inner.indices;
+        let arr = ::ndarray::aview1(indices);
+        // SAFETY: in order to call this function, the lifetime of `self` must be managed by Python.
+        // We tie the lifetime of the array to `slf_`, and there are no public ways to modify the
+        // `Box<[u32]>` allocation (including dropping or reallocating it) other than the entire
+        // object getting dropped, which Python will keep safe.
+        let out = unsafe { PyArray1::borrow_from_array_bound(&arr, slf_.into_any()) };
+        out.readwrite().make_nonwriteable();
+        out
+    }
+
+    /// Get a :class:`.Pauli` object that represents the measurement basis needed for this term.
+    ///
+    /// For example, the projector ``0l+`` will return a Pauli ``ZXY``.  The resulting
+    /// :class:`.Pauli` is dense, in the sense that explicit identities are stored.  An identity in
+    /// the Pauli output does not require a concrete measurement.
+    ///
+    /// Returns:
+    ///     :class:`.Pauli`: the Pauli operator representing the necessary measurement basis.
+    ///
+    /// See also:
+    ///     :meth:`SparseObservable.pauli_bases`
+    ///         A similar method for an entire observable at once.
+    #[pyo3(name = "pauli_base")]
+    fn py_pauli_base<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        let inner = self.inner.read().map_err(|_| SparseObservableReadError)?;
+        let mut x = vec![false; inner.num_qubits as usize];
+        let mut z = vec![false; inner.num_qubits as usize];
+        for (bit_term, index) in inner.bit_terms.iter().zip(inner.indices.iter()) {
+            x[*index as usize] = bit_term.has_x_component();
+            z[*index as usize] = bit_term.has_z_component();
+        }
+        PAULI_TYPE.get_bound(py).call1(((
+            PyArray1::from_vec_bound(py, z),
+            PyArray1::from_vec_bound(py, x),
+        ),))
+    }
+}
 
 /// Construct the Python-space `IntEnum` that represents the same values as the Rust-spce `BitTerm`.
 ///
@@ -225,11 +374,8 @@ impl PySparseObservable {
             };
             return Self::from_sparse_list(vec, num_qubits).map_err(PyErr::from);
         }
-        if let Ok(term) = data.downcast_exact::<SparseTerm>() {
-            let inner = term.borrow().to_observable();
-            return Ok(Self {
-                inner: Arc::new(RwLock::new(inner)),
-            });
+        if let Ok(term) = data.downcast_exact::<PySparseTerm>() {
+            return term.borrow().to_observable();
         };
         if let Ok(observable) = Self::from_terms(data, num_qubits) {
             return Ok(observable);
@@ -745,11 +891,21 @@ impl PySparseObservable {
                         "cannot construct an observable from an empty list without knowing `num_qubits`",
                     ));
                 };
-                first?.downcast::<SparseTerm>()?.borrow().to_observable()
+                let py_term = first?.downcast::<PySparseTerm>()?.borrow();
+                let term = py_term
+                    .inner
+                    .read()
+                    .map_err(|_| SparseObservableReadError)?;
+                term.to_observable()
             }
         };
-        for term in iter {
-            inner.add_term(term?.downcast::<SparseTerm>()?.borrow().view())?;
+        for bound_py_term in iter {
+            let py_term = bound_py_term?.downcast::<PySparseTerm>()?.borrow();
+            let term = py_term
+                .inner
+                .read()
+                .map_err(|_| SparseObservableReadError)?;
+            inner.add_term(term.view())?;
         }
         Ok(Self {
             inner: Arc::new(RwLock::new(inner)),
@@ -1085,7 +1241,14 @@ impl PySparseObservable {
     fn __getitem__(&self, py: Python, index: PySequenceIndex) -> PyResult<Py<PyAny>> {
         let inner = self.inner.read().map_err(|_| SparseObservableReadError)?;
         let indices = match index.with_len(inner.num_terms())? {
-            SequenceIndex::Int(index) => return Ok(inner.term(index).to_term().into_py(py)),
+            SequenceIndex::Int(index) => {
+                let term = inner.term(index).to_term();
+                // TODO can we just implement SparseTerm.into_py --> PySparseTerm?
+                let py_term = PySparseTerm {
+                    inner: Arc::new(RwLock::new(term)),
+                };
+                return Ok(py_term.into_py(py));
+            }
             indices => indices,
         };
         let mut out = SparseObservable::zero(inner.num_qubits());
@@ -1399,7 +1562,7 @@ impl PySparseObservable {
     #[allow(non_snake_case)]
     #[classattr]
     fn Term(py: Python) -> Bound<PyType> {
-        py.get_type_bound::<SparseTerm>()
+        py.get_type_bound::<PySparseTerm>()
     }
 }
 
@@ -1666,6 +1829,7 @@ fn coerce_to_observable<'py>(
         Ok(obs) => Ok(Some(Bound::new(py, obs)?)),
         Err(e) => {
             if e.is_instance_of::<PyTypeError>(py) {
+                println!("Failed coercing {:?}", value);
                 Ok(None)
             } else {
                 Err(e)
