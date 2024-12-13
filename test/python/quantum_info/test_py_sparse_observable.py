@@ -1927,6 +1927,15 @@ class TestSparseObservable(QiskitTestCase):
         self.assertEqual(copy.copy(term), term)
         self.assertEqual(copy.deepcopy(term), term)
 
+    @ddt.data(
+        2j * SparseObservable.identity(1),
+    )
+    def test_term_copy(self, obs):
+        term = obs[0]
+        copied = term.copy()
+        self.assertEqual(term, copied)
+        self.assertIsNot(term, copied)
+
     def test_term_attributes(self):
         term = SparseObservable.from_label("II+IIX0")[0]
         self.assertEqual(term.num_qubits, 7)
