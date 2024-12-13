@@ -209,6 +209,20 @@ impl PySparseTerm {
         out
     }
 
+    /// The number of qubits the term is defined on.
+    #[getter]
+    fn get_num_qubits(&self) -> PyResult<u32> {
+        let inner = self.inner.read().map_err(|_| SparseObservableReadError)?;
+        Ok(inner.num_qubits)
+    }
+
+    /// The term's coefficient.
+    #[getter]
+    fn get_coeff(&self) -> PyResult<Complex64> {
+        let inner = self.inner.read().map_err(|_| SparseObservableReadError)?;
+        Ok(inner.coeff)
+    }
+
     /// Read-only view onto the indices of each non-identity single-qubit term.
     ///
     /// The indices will always be in sorted order.
@@ -1829,7 +1843,6 @@ fn coerce_to_observable<'py>(
         Ok(obs) => Ok(Some(Bound::new(py, obs)?)),
         Err(e) => {
             if e.is_instance_of::<PyTypeError>(py) {
-                println!("Failed coercing {:?}", value);
                 Ok(None)
             } else {
                 Err(e)

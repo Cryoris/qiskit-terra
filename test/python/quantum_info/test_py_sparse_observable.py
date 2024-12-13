@@ -1873,9 +1873,9 @@ class TestSparseObservable(QiskitTestCase):
 
     @ddt.data(
         SparseObservable.identity(0),
-        # 2j * SparseObservable.identity(1),
-        # SparseObservable.identity(100),
-        # SparseObservable.from_label("IIX+-rlYZ01IIIII"),
+        2j * SparseObservable.identity(1),
+        SparseObservable.identity(100),
+        SparseObservable.from_label("IIX+-rlYZ01IIIII"),
     )
     def test_term_to_observable(self, obs):
         self.assertEqual(obs[0].to_observable(), obs)
