@@ -2951,14 +2951,28 @@ impl ArrayView {
 pub struct SparseTerm {
     /// Number of qubits the entire term applies to.
     #[pyo3(get)]
-    num_qubits: u32,
+    pub(crate) num_qubits: u32,
     /// The complex coefficient of the term.
     #[pyo3(get)]
-    coeff: Complex64,
-    bit_terms: Box<[BitTerm]>,
-    indices: Box<[u32]>,
+    pub(crate) coeff: Complex64,
+    pub(crate) bit_terms: Box<[BitTerm]>,
+    pub(crate) indices: Box<[u32]>,
 }
 impl SparseTerm {
+    pub fn new(
+        num_qubits: u32,
+        coeff: Complex64,
+        bit_terms: Box<[BitTerm]>,
+        indices: Box<[u32]>,
+    ) -> Self {
+        Self {
+            num_qubits,
+            coeff,
+            bit_terms,
+            indices,
+        }
+    }
+
     pub fn view(&self) -> SparseTermView {
         SparseTermView {
             num_qubits: self.num_qubits,
