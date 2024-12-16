@@ -1304,6 +1304,7 @@ name = "qiskit-c-ext"
 version = "2.0.0"
 dependencies = [
  "cbindgen",
+ "num-complex",
  "qiskit-accelerate",
 ]
 

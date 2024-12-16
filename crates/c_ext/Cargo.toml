@@ -11,6 +11,7 @@ doctest = false
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
+num-complex.workspace = true
 qiskit-accelerate.workspace = true
 
 [build-dependencies]
