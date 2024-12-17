@@ -2,7 +2,7 @@
 #include <complex.h>
 #include "qiskit.h"
 
-int test_zero()
+int test_zero2()
 {
     printf("\n-- test_zero\n");
     SparseObservable *obs = obs_zero(100);
@@ -11,7 +11,7 @@ int test_zero()
     return 0;
 }
 
-int test_identity()
+int test_identity2()
 {
     printf("\n-- test_identity\n");
     SparseObservable *obs = obs_identity(100);
@@ -20,7 +20,7 @@ int test_identity()
     return 0;
 }
 
-int test_copy()
+int test_copy2()
 {
     printf("\n-- test_copy\n");
     SparseObservable *obs = obs_identity(100);
@@ -31,7 +31,7 @@ int test_copy()
     return 0;
 }
 
-int test_add()
+int test_add2()
 {
     printf("\n-- test_add\n");
     SparseObservable *left = obs_identity(100);
@@ -47,7 +47,7 @@ int test_add()
     return 0;
 }
 
-int test_mult_real()
+int test_mult_real2()
 {
     printf("\n-- test_mult_real\n");
     SparseObservable *obs = obs_identity(100);
@@ -63,7 +63,7 @@ int test_mult_real()
     return 0;
 }
 
-int test_mult_complex()
+int test_mult_complex2()
 {
     printf("\n-- test_mult_complex\n");
     SparseObservable *obs = obs_identity(100);
@@ -79,7 +79,7 @@ int test_mult_complex()
     return 0;
 }
 
-int test_canonicalize()
+int test_canonicalize2()
 {
     printf("\n-- test_canonicalize\n");
     SparseObservable *left = obs_identity(100);
@@ -99,7 +99,7 @@ int test_canonicalize()
     return 0;
 }
 
-int test_num_terms()
+int test_num_terms2()
 {
     printf("\n-- test_num_terms\n");
 
@@ -118,7 +118,7 @@ int test_num_terms()
     return 0;
 }
 
-int test_num_qubits()
+int test_num_qubits2()
 {
     printf("\n-- test_num_qubits\n");
 
@@ -137,22 +137,22 @@ int test_num_qubits()
     return 0;
 }
 
-int test_main()
+int test_main2()
 {
     // BitTerm *bit = bit_term(1);
     // printf("%i", *bit);
     // bit_term_print(bit);
     // bit_term_deallocate(bit);
 
-    test_zero();
-    test_identity();
-    test_add();
-    test_mult_real();
-    test_mult_complex();
-    test_canonicalize();
-    test_copy();
-    test_num_terms();
-    test_num_qubits();
+    test_zero2();
+    test_identity2();
+    test_add2();
+    test_mult_real2();
+    test_mult_complex2();
+    test_canonicalize2();
+    test_copy2();
+    test_num_terms2();
+    test_num_qubits2();
 
     return 0;
 }
