@@ -25,7 +25,7 @@ from qiskit import transpile
 from qiskit.circuit import Measure, Parameter, library, QuantumCircuit
 from qiskit.exceptions import QiskitError
 from qiskit.quantum_info import (
-    PySparseObservable as SparseObservable,
+    SparseObservable,
     SparsePauliOp,
     Pauli,
     PauliList,
@@ -1183,9 +1183,9 @@ class TestSparseObservable(QiskitTestCase):
             base += AllowRightArithmetic()
 
     def test_add_failures(self):
-        with self.assertRaisesRegex(ValueError, "incompatible numbers of qubits"):
+        with self.assertRaisesRegex(ValueError, "mismatched numbers of qubits"):
             _ = SparseObservable.zero(4) + SparseObservable.zero(6)
-        with self.assertRaisesRegex(ValueError, "incompatible numbers of qubits"):
+        with self.assertRaisesRegex(ValueError, "mismatched numbers of qubits"):
             _ = SparseObservable.zero(6) + SparseObservable.zero(4)
 
     def test_sub_simple(self):
@@ -1294,9 +1294,9 @@ class TestSparseObservable(QiskitTestCase):
             base -= AllowRightArithmetic()
 
     def test_sub_failures(self):
-        with self.assertRaisesRegex(ValueError, "incompatible numbers of qubits"):
+        with self.assertRaisesRegex(ValueError, "mismatched numbers of qubits"):
             _ = SparseObservable.zero(4) - SparseObservable.zero(6)
-        with self.assertRaisesRegex(ValueError, "incompatible numbers of qubits"):
+        with self.assertRaisesRegex(ValueError, "mismatched numbers of qubits"):
             _ = SparseObservable.zero(6) - SparseObservable.zero(4)
 
     @ddt.idata(single_cases())
@@ -1926,6 +1926,15 @@ class TestSparseObservable(QiskitTestCase):
         self.assertEqual(pickle.loads(pickle.dumps(term)), term)
         self.assertEqual(copy.copy(term), term)
         self.assertEqual(copy.deepcopy(term), term)
+
+    @ddt.data(
+        2j * SparseObservable.identity(1),
+    )
+    def test_term_copy(self, obs):
+        term = obs[0]
+        copied = term.copy()
+        self.assertEqual(term, copied)
+        self.assertIsNot(term, copied)
 
     def test_term_attributes(self):
         term = SparseObservable.from_label("II+IIX0")[0]

@@ -23,6 +23,7 @@ use pyo3::{
     prelude::*,
     sync::GILOnceCell,
     types::{IntoPyDict, PyList, PyType},
+    PyErr,
 };
 use qiskit_circuit::{
     imports::{ImportOnceCell, NUMPY_COPY_ONLY_IF_NEEDED},
@@ -36,7 +37,8 @@ use std::{
 use thiserror::Error;
 
 use crate::sparse_observable::{
-    BitTerm, CoherenceError, LabelError, SparseObservable, SparseTerm, SparseTermView,
+    ArithmeticError, BitTerm, BitTermFromU8Error, CoherenceError, LabelError, SparseObservable,
+    SparseTerm, SparseTermView,
 };
 
 static PAULI_TYPE: ImportOnceCell = ImportOnceCell::new("qiskit.quantum_info", "Pauli");
@@ -45,40 +47,120 @@ static SPARSE_PAULI_OP_TYPE: ImportOnceCell =
     ImportOnceCell::new("qiskit.quantum_info", "SparsePauliOp");
 
 static BIT_TERM_PY_ENUM: GILOnceCell<Py<PyType>> = GILOnceCell::new();
+static BIT_TERM_INTO_PY: GILOnceCell<[Option<Py<PyAny>>; 16]> = GILOnceCell::new();
 
 #[derive(Error, Debug)]
-struct SparseObservableReadError;
+struct InnerReadError;
 
-impl ::std::fmt::Display for SparseObservableReadError {
+#[derive(Error, Debug)]
+struct InnerWriteError;
+
+impl ::std::fmt::Display for InnerReadError {
     fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
         write!(f, "Failed acquiring lock for reading.")
     }
 }
 
-impl From<SparseObservableReadError> for PyErr {
-    fn from(value: SparseObservableReadError) -> PyErr {
-        PyRuntimeError::new_err(value.to_string())
-    }
-}
-
-#[derive(Error, Debug)]
-struct SparseObservableWriteError;
-
-impl ::std::fmt::Display for SparseObservableWriteError {
+impl ::std::fmt::Display for InnerWriteError {
     fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
         write!(f, "Failed acquiring lock for writing.")
     }
 }
 
-impl From<SparseObservableWriteError> for PyErr {
-    fn from(value: SparseObservableWriteError) -> PyErr {
+impl From<InnerReadError> for PyErr {
+    fn from(value: InnerReadError) -> PyErr {
+        PyRuntimeError::new_err(value.to_string())
+    }
+}
+impl From<InnerWriteError> for PyErr {
+    fn from(value: InnerWriteError) -> PyErr {
         PyRuntimeError::new_err(value.to_string())
     }
 }
 
-#[pyclass(name = "PyTerm", frozen, module = "qiskit.quantum_info")]
+impl From<BitTermFromU8Error> for PyErr {
+    fn from(value: BitTermFromU8Error) -> PyErr {
+        PyValueError::new_err(value.to_string())
+    }
+}
+impl From<CoherenceError> for PyErr {
+    fn from(value: CoherenceError) -> PyErr {
+        PyValueError::new_err(value.to_string())
+    }
+}
+impl From<LabelError> for PyErr {
+    fn from(value: LabelError) -> PyErr {
+        PyValueError::new_err(value.to_string())
+    }
+}
+impl From<ArithmeticError> for PyErr {
+    fn from(value: ArithmeticError) -> PyErr {
+        PyValueError::new_err(value.to_string())
+    }
+}
+
+// Return the relevant value from the Python-space sister enumeration.  These are Python-space
+// singletons and subclasses of Python `int`.  We only use this for interaction with "high level"
+// Python space; the efficient Numpy-like array paths use `u8` directly so Numpy can act on it
+// efficiently.
+impl IntoPy<Py<PyAny>> for BitTerm {
+    fn into_py(self, py: Python) -> Py<PyAny> {
+        let terms = BIT_TERM_INTO_PY.get_or_init(py, || {
+            let py_enum = BIT_TERM_PY_ENUM
+                .get_or_try_init(py, || make_py_bit_term(py))
+                .expect("creating a simple Python enum class should be infallible")
+                .bind(py);
+            ::std::array::from_fn(|val| {
+                ::bytemuck::checked::try_cast(val as u8)
+                    .ok()
+                    .map(|term: BitTerm| {
+                        py_enum
+                            .getattr(term.py_name())
+                            .expect("the created `BitTerm` enum should have matching attribute names to the terms")
+                            .unbind()
+                    })
+            })
+        });
+        terms[self as usize]
+            .as_ref()
+            .expect("the lookup table initializer populated a 'Some' in all valid locations")
+            .clone_ref(py)
+    }
+}
+impl ToPyObject for BitTerm {
+    fn to_object(&self, py: Python) -> Py<PyAny> {
+        self.into_py(py)
+    }
+}
+impl<'py> FromPyObject<'py> for BitTerm {
+    fn extract_bound(ob: &Bound<'py, PyAny>) -> PyResult<Self> {
+        let value = ob
+            .extract::<isize>()
+            .map_err(|_| match ob.get_type().repr() {
+                Ok(repr) => PyTypeError::new_err(format!("bad type for 'BitTerm': {}", repr)),
+                Err(err) => err,
+            })?;
+        let value_error = || {
+            PyValueError::new_err(format!(
+                "value {} is not a valid letter of the single-qubit alphabet for 'BitTerm'",
+                value
+            ))
+        };
+        let value: u8 = value.try_into().map_err(|_| value_error())?;
+        value.try_into().map_err(|_| value_error())
+    }
+}
+
+/// A single term from a complete :class:`SparseObservable`.
+///
+/// These are typically created by indexing into or iterating through a :class:`SparseObservable`.
+#[pyclass(name = "Term", frozen, module = "qiskit.quantum_info")]
 #[derive(Clone, Debug)]
 struct PySparseTerm {
+    // This class keeps a pointer to a pure Rust-SparseTerm and serves as interface from Python.
+    // Note that we can use the standard clone, since the PySparseTerm is immutable from Python
+    // space, hence we can just clone the pointer. Otherwise we'd have to impl Clone manually,
+    // like for the PySparseObservable.
     inner: Arc<RwLock<SparseTerm>>,
 }
 
@@ -88,7 +170,7 @@ impl PySparseTerm {
     #[classattr]
     #[pyo3(name = "__qualname__")]
     fn type_qualname() -> &'static str {
-        "PySparseObservable.Term" // TODO change to SparseObservable.Term
+        "SparseObservable.Term"
     }
 
     #[new]
@@ -134,7 +216,7 @@ impl PySparseTerm {
 
     /// Convert this term to a complete :class:`SparseObservable`.
     fn to_observable(&self) -> PyResult<PySparseObservable> {
-        let inner = self.inner.read().map_err(|_| SparseObservableReadError)?;
+        let inner = self.inner.read().map_err(|_| InnerReadError)?;
         let obs = SparseObservable::new(
             inner.num_qubits,
             vec![inner.coeff],
@@ -156,13 +238,13 @@ impl PySparseTerm {
         };
         let slf = slf.borrow();
         let other = other.borrow();
-        let slf_inner = slf.inner.read().map_err(|_| SparseObservableReadError)?;
-        let other_inner = other.inner.read().map_err(|_| SparseObservableReadError)?;
+        let slf_inner = slf.inner.read().map_err(|_| InnerReadError)?;
+        let other_inner = other.inner.read().map_err(|_| InnerReadError)?;
         Ok(slf_inner.eq(&other_inner))
     }
 
     fn __repr__(&self) -> PyResult<String> {
-        let inner = self.inner.read().map_err(|_| SparseObservableReadError)?;
+        let inner = self.inner.read().map_err(|_| InnerReadError)?;
         Ok(format!(
             "<{} on {} qubit{}: {}>",
             Self::type_qualname(),
@@ -185,8 +267,7 @@ impl PySparseTerm {
     }
 
     /// Get a copy of this term.
-    #[pyo3(name = "copy")]
-    fn py_copy(&self) -> Self {
+    fn copy(&self) -> Self {
         self.clone()
     }
 
@@ -212,14 +293,14 @@ impl PySparseTerm {
     /// The number of qubits the term is defined on.
     #[getter]
     fn get_num_qubits(&self) -> PyResult<u32> {
-        let inner = self.inner.read().map_err(|_| SparseObservableReadError)?;
+        let inner = self.inner.read().map_err(|_| InnerReadError)?;
         Ok(inner.num_qubits)
     }
 
     /// The term's coefficient.
     #[getter]
     fn get_coeff(&self) -> PyResult<Complex64> {
-        let inner = self.inner.read().map_err(|_| SparseObservableReadError)?;
+        let inner = self.inner.read().map_err(|_| InnerReadError)?;
         Ok(inner.coeff)
     }
 
@@ -253,9 +334,8 @@ impl PySparseTerm {
     /// See also:
     ///     :meth:`SparseObservable.pauli_bases`
     ///         A similar method for an entire observable at once.
-    #[pyo3(name = "pauli_base")]
-    fn py_pauli_base<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
-        let inner = self.inner.read().map_err(|_| SparseObservableReadError)?;
+    fn pauli_base<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        let inner = self.inner.read().map_err(|_| InnerReadError)?;
         let mut x = vec![false; inner.num_qubits as usize];
         let mut z = vec![false; inner.num_qubits as usize];
         for (bit_term, index) in inner.bit_terms.iter().zip(inner.indices.iter()) {
@@ -307,7 +387,7 @@ fn make_py_bit_term(py: Python) -> PyResult<Py<PyType>> {
         Some(
             &[
                 ("module", "qiskit.quantum_info"),
-                ("qualname", "PySparseObservable.BitTerm"),
+                ("qualname", "SparseObservable.BitTerm"),
             ]
             .into_py_dict_bound(py),
         ),
@@ -315,9 +395,10 @@ fn make_py_bit_term(py: Python) -> PyResult<Py<PyType>> {
     Ok(obj.downcast_into::<PyType>()?.unbind())
 }
 
-#[pyclass(name = "PySparseObservable", module = "qiskit.quantum_info", sequence)]
+#[pyclass(name = "SparseObservable", module = "qiskit.quantum_info", sequence)]
 #[derive(Debug)]
 pub struct PySparseObservable {
+    // This class keeps a pointer to a pure Rust-SparseTerm and serves as interface from Python.
     inner: Arc<RwLock<SparseObservable>>,
 }
 
@@ -420,7 +501,7 @@ impl PySparseObservable {
     #[getter]
     #[inline]
     pub fn num_qubits(&self) -> PyResult<u32> {
-        let inner = self.inner.read().map_err(|_| SparseObservableReadError)?; // TODO should this use ``?`` maybe?
+        let inner = self.inner.read().map_err(|_| InnerReadError)?;
         Ok(inner.num_qubits())
     }
 
@@ -428,7 +509,7 @@ impl PySparseObservable {
     #[getter]
     #[inline]
     pub fn num_terms(&self) -> PyResult<usize> {
-        let inner = self.inner.read().map_err(|_| SparseObservableReadError)?;
+        let inner = self.inner.read().map_err(|_| InnerReadError)?;
         Ok(inner.num_terms())
     }
 
@@ -682,7 +763,7 @@ impl PySparseObservable {
     ///         Construct the observable from a list of labels without explicit identities, but with
     ///         the qubits each single-qubit term applies to listed explicitly.
     #[staticmethod]
-    #[pyo3( signature = (iter, /, *, num_qubits=None))]
+    #[pyo3(signature = (iter, /, *, num_qubits=None))]
     fn from_list(iter: Vec<(String, Complex64)>, num_qubits: Option<u32>) -> PyResult<Self> {
         if iter.is_empty() && num_qubits.is_none() {
             return Err(PyValueError::new_err(
@@ -812,7 +893,7 @@ impl PySparseObservable {
     ///         >>> SparseObservable.from_sparse_pauli_op(spo)
     ///         <SparseObservable with 3 terms on 3 qubits: (1+0j)() + (0.5+0j)(Z_0) + (0.5+0j)(Z_1)>
     #[staticmethod]
-    #[pyo3( signature = (op, /))]
+    #[pyo3(signature = (op, /))]
     fn from_sparse_pauli_op(op: &Bound<PyAny>) -> PyResult<Self> {
         let py = op.py();
         let pauli_list_ob = op.getattr(intern!(py, "paulis"))?;
@@ -906,19 +987,13 @@ impl PySparseObservable {
                     ));
                 };
                 let py_term = first?.downcast::<PySparseTerm>()?.borrow();
-                let term = py_term
-                    .inner
-                    .read()
-                    .map_err(|_| SparseObservableReadError)?;
+                let term = py_term.inner.read().map_err(|_| InnerReadError)?;
                 term.to_observable()
             }
         };
         for bound_py_term in iter {
             let py_term = bound_py_term?.downcast::<PySparseTerm>()?.borrow();
-            let term = py_term
-                .inner
-                .read()
-                .map_err(|_| SparseObservableReadError)?;
+            let term = py_term.inner.read().map_err(|_| InnerReadError)?;
             inner.add_term(term.view())?;
         }
         Ok(Self {
@@ -1022,7 +1097,7 @@ impl PySparseObservable {
     ///         >>> obs.clear()
     ///         >>> assert obs == SparseObservable.zero(obs.py_num_qubits())
     pub fn clear(&mut self) -> PyResult<()> {
-        let mut inner = self.inner.write().map_err(|_| SparseObservableWriteError)?;
+        let mut inner = self.inner.write().map_err(|_| InnerWriteError)?;
         inner.clear();
         Ok(())
     }
@@ -1071,38 +1146,125 @@ impl PySparseObservable {
         signature = (/, tol=1e-8),
     )]
     fn simplify(&self, tol: f64) -> PyResult<Self> {
-        let inner = self.inner.read().map_err(|_| SparseObservableReadError)?;
+        let inner = self.inner.read().map_err(|_| InnerReadError)?;
         let simplified = inner.canonicalize(tol);
         Ok(Self {
             inner: Arc::new(RwLock::new(simplified)),
         })
     }
 
-    /// Compute the adjoint.
+    /// Calculate the adjoint of this observable.
+    ///
+    ///
+    /// This is well defined in the abstract mathematical sense.  All the terms of the single-qubit
+    /// alphabet are self-adjoint, so the result of this operation is the same observable, except
+    /// its coefficients are all their complex conjugates.
+    ///
+    /// Examples:
+    ///
+    ///     .. code-block::
+    ///
+    ///         >>> left = SparseObservable.from_list([("XY+-", 1j)])
+    ///         >>> right = SparseObservable.from_list([("XY+-", -1j)])
+    ///         >>> assert left.adjoint() == right
     fn adjoint(&self) -> PyResult<Self> {
-        let inner = self.inner.read().map_err(|_| SparseObservableReadError)?;
+        let inner = self.inner.read().map_err(|_| InnerReadError)?;
         Ok(Self {
             inner: Arc::new(RwLock::new(inner.adjoint())),
         })
     }
 
-    /// Compute the transpose.
+    /// Calculate the matrix transposition of this observable.
+    ///
+    /// This operation is defined in terms of the standard matrix conventions of Qiskit, in that the
+    /// matrix form is taken to be in the $Z$ computational basis.  The $X$- and $Z$-related
+    /// alphabet terms are unaffected by the transposition, but $Y$-related terms modify their
+    /// alphabet terms.  Precisely:
+    ///
+    /// * :math:`Y` transposes to :math:`-Y`
+    /// * :math:`\lvert r\rangle\langle r\rvert` transposes to :math:`\lvert l\rangle\langle l\rvert`
+    /// * :math:`\lvert l\rangle\langle l\rvert` transposes to :math:`\lvert r\rangle\langle r\rvert`
+    ///
+    /// Examples:
+    ///
+    ///     .. code-block::
+    ///
+    ///         >>> obs = SparseObservable([("III", 1j), ("Yrl", 0.5)])
+    ///         >>> assert obs.transpose() == SparseObservable([("III", 1j), ("Ylr", -0.5)])
     fn transpose(&self) -> PyResult<Self> {
-        let inner = self.inner.read().map_err(|_| SparseObservableReadError)?;
+        let inner = self.inner.read().map_err(|_| InnerReadError)?;
         Ok(Self {
             inner: Arc::new(RwLock::new(inner.transpose())),
         })
     }
 
-    /// Compute the complex conjugate.
+    /// Calculate the complex conjugation of this observable.
+    ///
+    /// This operation is defined in terms of the standard matrix conventions of Qiskit, in that the
+    /// matrix form is taken to be in the $Z$ computational basis.  The $X$- and $Z$-related
+    /// alphabet terms are unaffected by the complex conjugation, but $Y$-related terms modify their
+    /// alphabet terms.  Precisely:
+    ///
+    /// * :math:`Y` conjguates to :math:`-Y`
+    /// * :math:`\lvert r\rangle\langle r\rvert` conjugates to :math:`\lvert l\rangle\langle l\rvert`
+    /// * :math:`\lvert l\rangle\langle l\rvert` conjugates to :math:`\lvert r\rangle\langle r\rvert`
+    ///
+    /// Additionally, all coefficients are conjugated.
+    ///
+    /// Examples:
+    ///
+    ///     .. code-block::
+    ///
+    ///         >>> obs = SparseObservable([("III", 1j), ("Yrl", 0.5)])
+    ///         >>> assert obs.conjugate() == SparseObservable([("III", -1j), ("Ylr", -0.5)])
     fn conjugate(&self) -> PyResult<Self> {
-        let inner = self.inner.read().map_err(|_| SparseObservableReadError)?;
+        let inner = self.inner.read().map_err(|_| InnerReadError)?;
         Ok(Self {
             inner: Arc::new(RwLock::new(inner.conjugate())),
         })
     }
 
-    // TODO why does this return PyAny and not PySparseObservable?
+    /// Tensor product of two observables.
+    ///
+    /// The bit ordering is defined such that the qubit indices of the argument will remain the
+    /// same, and the indices of ``self`` will be offset by the number of qubits in ``other``.  This
+    /// is the same convention as used by the rest of Qiskit's :mod:`~qiskit.quantum_info`
+    /// operators.
+    ///
+    /// This function is used for the infix ``^`` operator.  If using this operator, beware that
+    /// `Python's operator-precedence rules
+    /// <https://docs.python.org/3/reference/expressions.html#operator-precedence>`__ may cause the
+    /// evaluation order to be different to your expectation.  In particular, the operator ``+``
+    /// binds more tightly than ``^``, just like ``*`` binds more tightly than ``+``.  Use
+    /// parentheses to fix the evaluation order, if needed.
+    ///
+    /// The argument will be cast to :class:`SparseObservable` using its default constructor, if it
+    /// is not already in the correct form.
+    ///
+    /// Args:
+    ///
+    ///     other: the observable to put on the right-hand side of the tensor product.
+    ///
+    /// Examples:
+    ///
+    ///     The bit ordering of this is such that the tensor product of two observables made from a
+    ///     single label "looks like" an observable made by concatenating the two strings::
+    ///
+    ///         >>> left = SparseObservable.from_label("XYZ")
+    ///         >>> right = SparseObservable.from_label("+-IIrl")
+    ///         >>> assert left.tensor(right) == SparseObservable.from_label("XYZ+-IIrl")
+    ///
+    ///     You can also use the infix ``^`` operator for tensor products, which will similarly cast
+    ///     the right-hand side of the operation if it is not already a :class:`SparseObservable`::
+    ///
+    ///         >>> assert SparseObservable("rl") ^ Pauli("XYZ") == SparseObservable("rlXYZ")
+    ///
+    /// See also:
+    ///     :meth:`expand`
+    ///
+    ///         The same function, but with the order of arguments flipped.  This can be useful if
+    ///         you like using the casting behavior for the argument, but you want your existing
+    ///         :class:`SparseObservable` to be on the right-hand side of the tensor ordering.
     #[pyo3(signature = (other, /))]
     fn tensor(&self, other: &Bound<PyAny>) -> PyResult<Py<PyAny>> {
         let py = other.py();
@@ -1114,8 +1276,8 @@ impl PySparseObservable {
         };
 
         let other = other.borrow();
-        let inner = self.inner.read().map_err(|_| SparseObservableReadError)?;
-        let other_inner = other.inner.read().map_err(|_| SparseObservableReadError)?;
+        let inner = self.inner.read().map_err(|_| InnerReadError)?;
+        let other_inner = other.inner.read().map_err(|_| InnerReadError)?;
 
         let result = inner.tensor(&other_inner);
         Ok(Self {
@@ -1124,6 +1286,28 @@ impl PySparseObservable {
         .into_py(py))
     }
 
+    /// Reverse-order tensor product.
+    ///
+    /// This is equivalent to ``other.tensor(self)``, except that ``other`` will first be type-cast
+    /// to :class:`SparseObservable` if it isn't already one (by calling the default constructor).
+    ///
+    /// Args:
+    ///
+    ///     other: the observable to put on the left-hand side of the tensor product.
+    ///
+    /// Examples:
+    ///
+    ///     This is equivalent to :meth:`tensor` with the order of the arguments flipped::
+    ///
+    ///         >>> left = SparseObservable.from_label("XYZ")
+    ///         >>> right = SparseObservable.from_label("+-IIrl")
+    ///         >>> assert left.tensor(right) == right.expand(left)
+    ///
+    /// See also:
+    ///     :meth:`tensor`
+    ///
+    ///         The same function with the order of arguments flipped.  :meth:`tensor` is the more
+    ///         standard argument ordering, and matches Qiskit's other conventions.
     #[pyo3(signature = (other, /))]
     fn expand(&self, other: &Bound<PyAny>) -> PyResult<Py<PyAny>> {
         let py = other.py();
@@ -1135,8 +1319,8 @@ impl PySparseObservable {
         };
 
         let other = other.borrow();
-        let inner = self.inner.read().map_err(|_| SparseObservableReadError)?;
-        let other_inner = other.inner.read().map_err(|_| SparseObservableReadError)?;
+        let inner = self.inner.read().map_err(|_| InnerReadError)?;
+        let other_inner = other.inner.read().map_err(|_| InnerReadError)?;
 
         let result = other_inner.tensor(&inner);
         Ok(Self {
@@ -1169,7 +1353,7 @@ impl PySparseObservable {
     #[pyo3(signature = (/, layout, num_qubits=None))]
     fn apply_layout(&self, layout: Bound<PyAny>, num_qubits: Option<u32>) -> PyResult<Self> {
         let py = layout.py();
-        let inner = self.inner.read().map_err(|_| SparseObservableReadError)?;
+        let inner = self.inner.read().map_err(|_| InnerReadError)?;
         let check_inferred_qubits = |inferred: u32| -> PyResult<u32> {
             if inferred < inner.num_qubits() {
                 return Err(CoherenceError::NotEnoughQubits {
@@ -1226,9 +1410,8 @@ impl PySparseObservable {
     /// Returns:
     ///     :class:`.PauliList`: the Pauli operator list representing the necessary measurement
     ///     bases.
-    #[pyo3(name = "pauli_bases")]
-    fn py_pauli_bases<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
-        let inner = self.inner.read().map_err(|_| SparseObservableReadError)?;
+    fn pauli_bases<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        let inner = self.inner.read().map_err(|_| InnerReadError)?;
         let mut x = Array2::from_elem([inner.num_terms(), inner.num_qubits() as usize], false);
         let mut z = Array2::from_elem([inner.num_terms(), inner.num_qubits() as usize], false);
         for (loc, term) in inner.iter().enumerate() {
@@ -1253,11 +1436,10 @@ impl PySparseObservable {
     }
 
     fn __getitem__(&self, py: Python, index: PySequenceIndex) -> PyResult<Py<PyAny>> {
-        let inner = self.inner.read().map_err(|_| SparseObservableReadError)?;
+        let inner = self.inner.read().map_err(|_| InnerReadError)?;
         let indices = match index.with_len(inner.num_terms())? {
             SequenceIndex::Int(index) => {
                 let term = inner.term(index).to_term();
-                // TODO can we just implement SparseTerm.into_py --> PySparseTerm?
                 let py_term = PySparseTerm {
                     inner: Arc::new(RwLock::new(term)),
                 };
@@ -1286,14 +1468,8 @@ impl PySparseObservable {
         };
         let slf_borrowed = slf.borrow();
         let other_borrowed = other.borrow();
-        let slf_inner = slf_borrowed
-            .inner
-            .read()
-            .map_err(|_| SparseObservableReadError)?;
-        let other_inner = other_borrowed
-            .inner
-            .read()
-            .map_err(|_| SparseObservableReadError)?;
+        let slf_inner = slf_borrowed.inner.read().map_err(|_| InnerReadError)?;
+        let other_inner = other_borrowed.inner.read().map_err(|_| InnerReadError)?;
         Ok(slf_inner.eq(&other_inner))
     }
 
@@ -1312,7 +1488,7 @@ impl PySparseObservable {
             if num_qubits == 1 { "" } else { "s" }
         );
 
-        let inner = self.inner.read().map_err(|_| SparseObservableReadError)?;
+        let inner = self.inner.read().map_err(|_| InnerReadError)?;
         let str_terms = if num_terms == 0 {
             "0.0".to_owned()
         } else {
@@ -1331,7 +1507,7 @@ impl PySparseObservable {
     fn __reduce__(&self, py: Python) -> PyResult<Py<PyAny>> {
         // we acquire the read lock once here and use the internal methods
         // to avoid checking and acquiring the lock in every method call
-        let inner = self.inner.read().map_err(|_| SparseObservableReadError)?;
+        let inner = self.inner.read().map_err(|_| InnerReadError)?;
         let bit_terms: &[u8] = ::bytemuck::cast_slice(&inner.bit_terms());
         Ok((
             py.get_type_bound::<Self>().getattr("from_raw_parts")?,
@@ -1353,7 +1529,7 @@ impl PySparseObservable {
             // This fast path is for consistency with the in-place `__iadd__`, which would otherwise
             // struggle to do the addition to itself.
             let slf_ = slf_.borrow();
-            let inner = slf_.inner.read().map_err(|_| SparseObservableReadError)?;
+            let inner = slf_.inner.read().map_err(|_| InnerReadError)?;
             let doubled =
                 <&SparseObservable as ::std::ops::Mul<_>>::mul(&inner, Complex64::new(2.0, 0.0));
             return Ok(Self {
@@ -1365,9 +1541,9 @@ impl PySparseObservable {
             return Ok(py.NotImplemented());
         };
         let slf_ = slf_.borrow();
-        let slf_inner = slf_.inner.read().map_err(|_| SparseObservableReadError)?;
+        let slf_inner = slf_.inner.read().map_err(|_| InnerReadError)?;
         let other = other.borrow();
-        let other_inner = other.inner.read().map_err(|_| SparseObservableReadError)?;
+        let other_inner = other.inner.read().map_err(|_| InnerReadError)?;
         slf_inner.check_equal_qubits(&other_inner)?;
         let added = <&SparseObservable as ::std::ops::Add>::add(&slf_inner, &other_inner);
 
@@ -1385,9 +1561,9 @@ impl PySparseObservable {
         };
         // let other = other.borrow();
 
-        let inner = self.inner.read().map_err(|_| SparseObservableReadError)?;
+        let inner = self.inner.read().map_err(|_| InnerReadError)?;
         let other = other.borrow();
-        let other_inner = other.inner.read().map_err(|_| SparseObservableReadError)?;
+        let other_inner = other.inner.read().map_err(|_| InnerReadError)?;
         inner.check_equal_qubits(&other_inner)?;
         let added = <&SparseObservable as ::std::ops::Add>::add(&other_inner, &inner);
 
@@ -1395,14 +1571,12 @@ impl PySparseObservable {
             inner: Arc::new(RwLock::new(added)),
         }
         .into_py(py))
-        // self.check_equal_qubits(&other)?;
-        // Ok((<&SparseObservable as ::std::ops::Add>::add(&other, self)).into_py(py))
     }
 
     fn __iadd__(slf_: Bound<PySparseObservable>, other: &Bound<PyAny>) -> PyResult<()> {
         if slf_.is(other) {
             let slf_ = slf_.borrow();
-            let mut slf_inner = slf_.inner.write().map_err(|_| SparseObservableWriteError)?;
+            let mut slf_inner = slf_.inner.write().map_err(|_| InnerWriteError)?;
             *slf_inner *= Complex64::new(2.0, 0.0);
             return Ok(());
         }
@@ -1416,9 +1590,9 @@ impl PySparseObservable {
             )));
         };
         let slf_ = slf_.borrow();
-        let mut slf_inner = slf_.inner.write().map_err(|_| SparseObservableWriteError)?;
+        let mut slf_inner = slf_.inner.write().map_err(|_| InnerWriteError)?;
         let other = other.borrow();
-        let other_inner = other.inner.read().map_err(|_| SparseObservableReadError)?;
+        let other_inner = other.inner.read().map_err(|_| InnerReadError)?;
         slf_inner.check_equal_qubits(&other_inner)?;
         slf_inner.add_assign(&other_inner);
         Ok(())
@@ -1434,9 +1608,9 @@ impl PySparseObservable {
         };
 
         let slf_ = slf_.borrow();
-        let slf_inner = slf_.inner.read().map_err(|_| SparseObservableReadError)?;
+        let slf_inner = slf_.inner.read().map_err(|_| InnerReadError)?;
         let other = other.borrow();
-        let other_inner = other.inner.read().map_err(|_| SparseObservableReadError)?;
+        let other_inner = other.inner.read().map_err(|_| InnerReadError)?;
         slf_inner.check_equal_qubits(&other_inner)?;
         let subtracted = <&SparseObservable as ::std::ops::Sub>::sub(&slf_inner, &other_inner);
 
@@ -1452,9 +1626,9 @@ impl PySparseObservable {
             return Ok(py.NotImplemented());
         };
 
-        let inner = self.inner.read().map_err(|_| SparseObservableReadError)?;
+        let inner = self.inner.read().map_err(|_| InnerReadError)?;
         let other = other.borrow();
-        let other_inner = other.inner.read().map_err(|_| SparseObservableReadError)?;
+        let other_inner = other.inner.read().map_err(|_| InnerReadError)?;
         inner.check_equal_qubits(&other_inner)?;
         let subtracted = <&SparseObservable as ::std::ops::Sub>::sub(&other_inner, &inner);
 
@@ -1482,9 +1656,9 @@ impl PySparseObservable {
             )));
         };
         let slf_ = slf_.borrow();
-        let mut slf_inner = slf_.inner.write().map_err(|_| SparseObservableWriteError)?;
+        let mut slf_inner = slf_.inner.write().map_err(|_| InnerWriteError)?;
         let other = other.borrow();
-        let other_inner = other.inner.read().map_err(|_| SparseObservableReadError)?;
+        let other_inner = other.inner.read().map_err(|_| InnerReadError)?;
         slf_inner.check_equal_qubits(&other_inner)?;
         slf_inner.sub_assign(&other_inner);
         Ok(())
@@ -1495,7 +1669,7 @@ impl PySparseObservable {
     }
 
     fn __neg__(&self) -> PyResult<Self> {
-        let inner = self.inner.read().map_err(|_| SparseObservableReadError)?;
+        let inner = self.inner.read().map_err(|_| InnerReadError)?;
         let neg = <&SparseObservable as ::std::ops::Neg>::neg(&inner);
         Ok(Self {
             inner: Arc::new(RwLock::new(neg)),
@@ -1503,7 +1677,7 @@ impl PySparseObservable {
     }
 
     fn __mul__(&self, other: Complex64) -> PyResult<Self> {
-        let inner = self.inner.read().map_err(|_| SparseObservableReadError)?;
+        let inner = self.inner.read().map_err(|_| InnerReadError)?;
         let mult = <&SparseObservable as ::std::ops::Mul<_>>::mul(&inner, other);
         Ok(Self {
             inner: Arc::new(RwLock::new(mult)),
@@ -1516,7 +1690,7 @@ impl PySparseObservable {
     fn __imul__(&mut self, other: Complex64) -> PyResult<()> {
         // we obtain write access to ``inner`` and call SparseObservable::mul_assign to mutate the
         // the ``inner`` data directly
-        let mut inner = self.inner.write().map_err(|_| SparseObservableWriteError)?;
+        let mut inner = self.inner.write().map_err(|_| InnerWriteError)?;
         inner.mul_assign(other);
         Ok(())
     }
@@ -1525,7 +1699,7 @@ impl PySparseObservable {
         if other.is_zero() {
             return Err(PyZeroDivisionError::new_err("complex division by zero"));
         }
-        let inner = self.inner.read().map_err(|_| SparseObservableReadError)?;
+        let inner = self.inner.read().map_err(|_| InnerReadError)?;
         let div = <&SparseObservable as ::std::ops::Div<_>>::div(&inner, other);
         Ok(Self {
             inner: Arc::new(RwLock::new(div)),
@@ -1535,7 +1709,7 @@ impl PySparseObservable {
         if other.is_zero() {
             return Err(PyZeroDivisionError::new_err("complex division by zero"));
         }
-        let mut inner = self.inner.write().map_err(|_| SparseObservableWriteError)?;
+        let mut inner = self.inner.write().map_err(|_| InnerWriteError)?;
         inner.div_assign(other);
         Ok(())
     }
@@ -1602,10 +1776,7 @@ struct ArrayView {
 impl ArrayView {
     fn __repr__(&self, py: Python) -> PyResult<String> {
         let borrowed = self.base.borrow(py);
-        let obs = borrowed
-            .inner
-            .read()
-            .map_err(|_| SparseObservableReadError)?;
+        let obs = borrowed.inner.read().map_err(|_| InnerReadError)?;
         let data = match self.slot {
             // Simple integers look the same in Rust-space debug as Python.
             ArraySlot::Indices => format!("{:?}", obs.indices()),
@@ -1659,10 +1830,7 @@ impl ArrayView {
         }
 
         let borrowed = self.base.borrow(py);
-        let obs = borrowed
-            .inner
-            .read()
-            .map_err(|_| SparseObservableReadError)?;
+        let obs = borrowed.inner.read().map_err(|_| InnerReadError)?;
         match self.slot {
             ArraySlot::Coeffs => get_from_slice::<_, Complex64>(py, obs.coeffs(), index),
             ArraySlot::BitTerms => get_from_slice::<_, u8>(py, obs.bit_terms(), index),
@@ -1725,10 +1893,7 @@ impl ArrayView {
         }
 
         let borrowed = self.base.borrow(values.py());
-        let mut obs = borrowed
-            .inner
-            .write()
-            .map_err(|_| SparseObservableWriteError)?;
+        let mut obs = borrowed.inner.write().map_err(|_| InnerWriteError)?;
         match self.slot {
             ArraySlot::Coeffs => set_in_slice::<_, Complex64>(obs.coeffs_mut(), index, values),
             ArraySlot::BitTerms => set_in_slice::<BitTerm, u8>(obs.bit_terms_mut(), index, values),
@@ -1739,10 +1904,7 @@ impl ArrayView {
 
     fn __len__(&self, py: Python) -> PyResult<usize> {
         let borrowed = self.base.borrow(py);
-        let obs = borrowed
-            .inner
-            .read()
-            .map_err(|_| SparseObservableReadError)?;
+        let obs = borrowed.inner.read().map_err(|_| InnerReadError)?;
         let len = match self.slot {
             ArraySlot::Coeffs => obs.coeffs().len(),
             ArraySlot::BitTerms => obs.bit_terms().len(),
@@ -1769,10 +1931,7 @@ impl ArrayView {
             ));
         }
         let borrowed = self.base.borrow(py);
-        let obs = borrowed
-            .inner
-            .read()
-            .map_err(|_| SparseObservableReadError)?;
+        let obs = borrowed.inner.read().map_err(|_| InnerReadError)?;
         match self.slot {
             ArraySlot::Coeffs => {
                 cast_array_type(py, PyArray1::from_slice_bound(py, obs.coeffs()), dtype)
