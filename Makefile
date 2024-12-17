@@ -90,6 +90,6 @@ c-header:
 
 c-test:
 	make c-header
-	gcc test/c/test_main.c -o test/c/main.o -lqiskit_c_ext -L./target/release
-	LD_LIBRARY_PATH=./target/release test/c/main.o
-
+	cmake -S. -Btest/c/build
+	cmake --build test/c/build
+	ctest --test-dir test/c/build
