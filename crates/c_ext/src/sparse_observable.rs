@@ -13,6 +13,11 @@
 use num_complex::Complex64;
 use qiskit_accelerate::sparse_observable::SparseObservable;
 
+/// Construct the zero observable (without any terms).
+///
+/// Example:
+///
+///     SparseObservable* zero = obs_zero(100);
 #[no_mangle]
 #[cfg(feature = "cbinding")]
 pub extern "C" fn obs_zero(num_qubits: u32) -> *mut SparseObservable {
@@ -20,6 +25,11 @@ pub extern "C" fn obs_zero(num_qubits: u32) -> *mut SparseObservable {
     Box::into_raw(Box::new(obs))
 }
 
+/// Construct the identity observable.
+///
+/// Example:
+///
+///     SparseObservable* identity = obs_identity(100);
 #[no_mangle]
 #[cfg(feature = "cbinding")]
 pub extern "C" fn obs_identity(num_qubits: u32) -> *mut SparseObservable {
@@ -27,7 +37,7 @@ pub extern "C" fn obs_identity(num_qubits: u32) -> *mut SparseObservable {
     Box::into_raw(Box::new(obs))
 }
 
-/// Multiply an observable by a complex coefficient.
+/// Multiply the observable by a complex coefficient.
 ///
 /// Example:
 ///     
