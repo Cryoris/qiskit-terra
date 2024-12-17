@@ -11,7 +11,50 @@
 // that they have been altered from the originals.
 
 use num_complex::Complex64;
-use qiskit_accelerate::sparse_observable::SparseObservable;
+use qiskit_accelerate::sparse_observable::{BitTerm, SparseObservable, SparseTerm};
+
+type IndexVec = Vec<u32>;
+type BitTermVec = Vec<BitTerm>;
+
+#[no_mangle]
+#[cfg(feature = "cbinding")]
+pub extern "C" fn indices_new() -> *mut IndexVec {
+    let indices = IndexVec::new();
+    Box::into_raw(Box::new(indices))
+}
+
+#[no_mangle]
+#[cfg(feature = "cbinding")]
+pub extern "C" fn indices_with_capacity(capacity: u64) -> *mut IndexVec {
+    let indices = IndexVec::with_capacity(capacity as usize);
+    Box::into_raw(Box::new(indices))
+}
+
+#[no_mangle]
+#[cfg(feature = "cbinding")]
+pub extern "C" fn indices_push(indices: &mut IndexVec, value: u32) {
+    indices.push(value)
+}
+
+#[no_mangle]
+#[cfg(feature = "cbinding")]
+pub extern "C" fn bit_terms_new() -> *mut BitTermVec {
+    let bit_terms = BitTermVec::new();
+    Box::into_raw(Box::new(bit_terms))
+}
+
+#[no_mangle]
+#[cfg(feature = "cbinding")]
+pub extern "C" fn bit_terms_with_capacity(capacity: u64) -> *mut BitTermVec {
+    let bit_terms = BitTermVec::with_capacity(capacity as usize);
+    Box::into_raw(Box::new(bit_terms))
+}
+
+#[no_mangle]
+#[cfg(feature = "cbinding")]
+pub extern "C" fn bit_terms_push(bit_terms: &mut BitTermVec, value: BitTerm) {
+    bit_terms.push(value)
+}
 
 /// Construct the zero observable (without any terms).
 ///
@@ -35,6 +78,71 @@ pub extern "C" fn obs_zero(num_qubits: u32) -> *mut SparseObservable {
 pub extern "C" fn obs_identity(num_qubits: u32) -> *mut SparseObservable {
     let obs = SparseObservable::identity(num_qubits);
     Box::into_raw(Box::new(obs))
+}
+
+/// Add a term to the observable.
+///
+/// Example:  TODO
+///
+#[no_mangle]
+#[cfg(feature = "cbinding")]
+pub extern "C" fn obs_push_copy(
+    obs: &mut SparseObservable,
+    bit_terms: &BitTermVec,
+    indices: &IndexVec,
+    coeff: Complex64,
+) {
+    if bit_terms.len() != indices.len() {
+        panic!("Mismatching length of bit_terms and indices.")
+    }
+
+    if indices.iter().any(|index| *index >= obs.num_qubits()) {
+        panic!("Index out of bounds.")
+    }
+
+    let term = SparseTerm::new(
+        obs.num_qubits(),
+        coeff,
+        bit_terms.clone().into_boxed_slice(),
+        indices.clone().into_boxed_slice(),
+    );
+
+    obs.add_term(term.view()).unwrap(); // TODO handle error
+}
+
+/// Add a term to the observable.
+///
+/// Example:  TODO
+///
+#[no_mangle]
+#[cfg(feature = "cbinding")]
+pub extern "C" fn obs_push_consume(
+    obs: &mut SparseObservable,
+    bit_terms: &mut BitTermVec,
+    indices: &mut IndexVec,
+    coeff: Complex64,
+) {
+    // we take ownership of the memory and let the variables go out of scope
+    // after this function, consuming the variables ``bit_terms`` and ``indices``
+    let bit_terms = unsafe { Box::from_raw(bit_terms) };
+    let indices = unsafe { Box::from_raw(indices) };
+
+    if bit_terms.len() != indices.len() {
+        panic!("Mismatching length of bit_terms and indices.")
+    }
+
+    if indices.iter().any(|index| *index >= obs.num_qubits()) {
+        panic!("Index out of bounds.")
+    }
+
+    let term = SparseTerm::new(
+        obs.num_qubits(),
+        coeff,
+        bit_terms.into_boxed_slice(),
+        indices.into_boxed_slice(),
+    );
+
+    obs.add_term(term.view()).unwrap(); // TODO handle error
 }
 
 /// Multiply the observable by a complex coefficient.

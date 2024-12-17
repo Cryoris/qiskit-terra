@@ -137,6 +137,39 @@ int test_num_qubits()
     return 0;
 }
 
+int test_custom_build()
+{
+    printf("\n-- test_custom_build\n");
+
+    u_int32_t num_qubits = 100;
+    SparseObservable *obs = obs_zero(num_qubits);
+
+    complex double coeff = 1;
+
+    BitTermVec *bits = bit_terms_new(); // could use with_capacity here too, but we test new()
+    bit_terms_push(bits, X);            // these enums are defined in BitTerm
+    bit_terms_push(bits, Y);
+    bit_terms_push(bits, Z);
+
+    IndexVec *indices = indices_with_capacity(3);
+    indices_push(indices, 0);
+    indices_push(indices, 1);
+    indices_push(indices, 2);
+
+    obs_push_copy(obs, bits, indices, coeff);
+    obs_push_consume(obs, bits, indices, coeff); // consumes the bits and indices vectors
+
+    obs_print(obs);
+
+    double tol = 1e-6;
+    SparseObservable *simplified = obs_canonicalize(obs, tol);
+    obs_print(simplified);
+
+    obs_deallocate(obs);
+
+    return 0;
+}
+
 int main()
 {
     // BitTerm *bit = bit_term(1);
@@ -153,6 +186,7 @@ int main()
     test_copy();
     test_num_terms();
     test_num_qubits();
+    test_custom_build();
 
     return 0;
 }
