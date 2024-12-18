@@ -131,12 +131,15 @@ void run(char* name, int result)
     } else {
         msg = "FAILED with unknown error";
     }
-    printf("--- %-30s: %s\n", name, msg);
+    fprintf(stderr, "--- %-30s: %s\n", name, msg);
+    fflush(stderr);
     return;
+    // TODO: return result
 }
 
 int test_sparse_observable()
 {
+    // TODO: accumulate results
     run("test_zero", test_zero());
     run("test_identity", test_identity());
     run("test_add", test_add());
