@@ -1,11 +1,7 @@
 #include <stdio.h>
 #include <complex.h>
+#include "common.h"
 #include "qiskit.h"
-
-enum TestResult {
-    Ok,
-    EqualityError,
-};
 
 int test_zero()
 {
@@ -150,26 +146,6 @@ int test_num_qubits()
     obs_deallocate(obs100);
 
     return result;
-}
-
-int run(char* name, int result)
-{
-    int did_fail = 1;
-    char* msg;
-    if (result == Ok)
-    {
-        did_fail = 0;
-        msg = "Ok";
-    } else if (result == EqualityError)
-    {
-        msg = "FAILED with an EqualityError";
-    } else {
-        msg = "FAILED with unknown error";
-    }
-    fprintf(stderr, "--- %-30s: %s\n", name, msg);
-    fflush(stderr);
-
-    return did_fail;
 }
 
 int test_sparse_observable()
