@@ -92,4 +92,4 @@ c-test:
 	make c-header
 	cmake -S. -Btest/c/build
 	cmake --build test/c/build
-	ctest --test-dir test/c/build
+	ctest -V --test-dir test/c/build
