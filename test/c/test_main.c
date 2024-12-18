@@ -4,7 +4,6 @@
 
 int test_zero()
 {
-    printf("\n-- test_zero\n");
     SparseObservable *obs = obs_zero(100);
     obs_print(obs);
     obs_deallocate(obs);
@@ -13,7 +12,6 @@ int test_zero()
 
 int test_identity()
 {
-    printf("\n-- test_identity\n");
     SparseObservable *obs = obs_identity(100);
     obs_print(obs);
     obs_deallocate(obs);
@@ -22,7 +20,6 @@ int test_identity()
 
 int test_copy()
 {
-    printf("\n-- test_copy\n");
     SparseObservable *obs = obs_identity(100);
     SparseObservable *copied = obs_copy(obs);
     obs_print(copied);
@@ -33,7 +30,6 @@ int test_copy()
 
 int test_add()
 {
-    printf("\n-- test_add\n");
     SparseObservable *left = obs_identity(100);
     SparseObservable *right = obs_identity(100);
     SparseObservable *obs = obs_add(left, right);
@@ -49,7 +45,6 @@ int test_add()
 
 int test_mult_real()
 {
-    printf("\n-- test_mult_real\n");
     SparseObservable *obs = obs_identity(100);
 
     double coeff = 2;
@@ -65,7 +60,6 @@ int test_mult_real()
 
 int test_mult_complex()
 {
-    printf("\n-- test_mult_complex\n");
     SparseObservable *obs = obs_identity(100);
 
     complex double coeff = 2 + 2 * I;
@@ -81,7 +75,6 @@ int test_mult_complex()
 
 int test_canonicalize()
 {
-    printf("\n-- test_canonicalize\n");
     SparseObservable *left = obs_identity(100);
     SparseObservable *right = obs_identity(100);
     SparseObservable *obs = obs_add(left, right);
@@ -101,18 +94,14 @@ int test_canonicalize()
 
 int test_num_terms()
 {
-    printf("\n-- test_num_terms\n");
-
     uint64_t num_terms;
 
     SparseObservable *zero = obs_zero(100);
     num_terms = obs_num_terms(zero);
-    printf("zero: %llu\n", num_terms);
     obs_deallocate(zero);
 
     SparseObservable *iden = obs_identity(100);
     num_terms = obs_num_terms(iden);
-    printf("identity: %llu\n", num_terms);
     obs_deallocate(iden);
 
     return 0;
@@ -120,39 +109,43 @@ int test_num_terms()
 
 int test_num_qubits()
 {
-    printf("\n-- test_num_qubits\n");
-
     uint32_t num_qubits;
 
     SparseObservable *obs = obs_zero(1);
     num_qubits = obs_num_qubits(obs);
-    printf("1 qubit: %u\n", num_qubits);
     obs_deallocate(obs);
 
     SparseObservable *obs100 = obs_zero(100);
     num_qubits = obs_num_qubits(obs100);
-    printf("100 qubits: %u\n", num_qubits);
     obs_deallocate(obs100);
 
     return 0;
 }
 
+void run(char* name, int result)
+{
+    char* msg = "";
+    if (result == 0)
+    {
+        msg = "OK";
+    } else {
+        msg = "FAILED with unknown error";
+    }
+    printf("--- %-30s: %s\n", name, msg);
+    return;
+}
+
 int test_main()
 {
-    // BitTerm *bit = bit_term(1);
-    // printf("%i", *bit);
-    // bit_term_print(bit);
-    // bit_term_deallocate(bit);
-
-    test_zero();
-    test_identity();
-    test_add();
-    test_mult_real();
-    test_mult_complex();
-    test_canonicalize();
-    test_copy();
-    test_num_terms();
-    test_num_qubits();
+    run("test_zero", test_zero());
+    run("test_identity", test_identity());
+    run("test_add", test_add());
+    run("test_mult_real", test_mult_real());
+    run("test_mult_complex", test_mult_complex());
+    run("test_canonicalize", test_canonicalize());
+    run("test_copy", test_copy());
+    run("test_num_terms", test_num_terms());
+    run("test_num_qubits", test_num_qubits());
 
     return 0;
 }
