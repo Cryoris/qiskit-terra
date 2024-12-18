@@ -163,6 +163,7 @@ int test_sparse_observable()
     num_failed += run("test_num_qubits", test_num_qubits());
 
     fprintf(stderr, "=== Number of failed subtests: %i\n", num_failed);
+    fflush(stderr);
 
     return num_failed;
 }
