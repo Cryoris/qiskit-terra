@@ -122,33 +122,35 @@ int test_num_qubits()
     return 0;
 }
 
-void run(char* name, int result)
+int run(char* name, int result)
 {
-    char* msg = "";
-    if (result == 0)
+    int did_fail = 0;
+    char* msg = "OK";
+    if (result > 0)
     {
-        msg = "OK";
-    } else {
         msg = "FAILED with unknown error";
     }
     fprintf(stderr, "--- %-30s: %s\n", name, msg);
     fflush(stderr);
-    return;
-    // TODO: return result
+
+    return did_fail;
 }
 
 int test_sparse_observable()
 {
-    // TODO: accumulate results
-    run("test_zero", test_zero());
-    run("test_identity", test_identity());
-    run("test_add", test_add());
-    run("test_mult_real", test_mult_real());
-    run("test_mult_complex", test_mult_complex());
-    run("test_canonicalize", test_canonicalize());
-    run("test_copy", test_copy());
-    run("test_num_terms", test_num_terms());
-    run("test_num_qubits", test_num_qubits());
+    int num_failed = 0;
 
-    return 0;
+    num_failed += run("test_zero", test_zero());
+    num_failed += run("test_identity", test_identity());
+    num_failed += run("test_add", test_add());
+    num_failed += run("test_mult_real", test_mult_real());
+    num_failed += run("test_mult_complex", test_mult_complex());
+    num_failed += run("test_canonicalize", test_canonicalize());
+    num_failed += run("test_copy", test_copy());
+    num_failed += run("test_num_terms", test_num_terms());
+    num_failed += run("test_num_qubits", test_num_qubits());
+
+    fprintf(stderr, "=== Number of failed subtests: %i", num_failed);
+
+    return num_failed;
 }
