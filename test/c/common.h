@@ -1,14 +1,25 @@
 #include<stdio.h>
 
+// An enumeration of test results. These should be returned by test functions to
+// indicate what kind of error occurred. This will be used to produce more
+// helpful messages for the developer running the test suite.
 enum TestResult {
     Ok,
     EqualityError,
 };
 
+// A macro for running a test function. This calls the run function below with
+// the provided function and its name.
 #define RUN_TEST(f) run(#f, f)
 
+// A function to run a test function of a given name. This function will also
+// post-process the returned `TestResult` to product a minimal info message for
+// the developer running the test suite.
 int run(const char* name, int (*test_function)(void))
 {
+    // TODO: we could consider to change the return value of our test functions
+    // to be a struct containing the integer return value and a custom error
+    // message which could then be included below.
     int result = test_function();
     int did_fail = 1;
     char* msg;
