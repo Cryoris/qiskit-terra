@@ -135,7 +135,7 @@ void run(char* name, int result)
     return;
 }
 
-int test_main()
+int test_sparse_observable()
 {
     run("test_zero", test_zero());
     run("test_identity", test_identity());
