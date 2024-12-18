@@ -87,10 +87,13 @@ test/c/qiskit.h:
 	cbindgen --crate qiskit-c-ext --output test/c/qiskit.h --lang C
 
 test/c/build:
+	# -S specifically specifies the source path to be the current folder
+	# -B specifically specifies the build path to be inside test/c/build
 	cmake -S. -Btest/c/build
 
 test/c/build/test/c/test_driver.c: test/c/build
 	cmake --build test/c/build
 
-c-test: test/c/qiskit.h test/c/build/test/c/test_driver.c
+ctest: test/c/qiskit.h test/c/build/test/c/test_driver.c
+	# -V ensures we always produce a logging output to indicate the subtests
 	ctest -V --test-dir test/c/build
