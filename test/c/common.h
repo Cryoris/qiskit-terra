@@ -5,8 +5,11 @@ enum TestResult {
     EqualityError,
 };
 
-int run(char* name, int result)
+#define RUN_TEST(f) run(#f, f)
+
+int run(const char* name, int (*test_function)(void))
 {
+    int result = test_function();
     int did_fail = 1;
     char* msg;
     if (result == Ok)

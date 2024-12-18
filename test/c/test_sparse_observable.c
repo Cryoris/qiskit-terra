@@ -152,15 +152,15 @@ int test_sparse_observable()
 {
     int num_failed = 0;
 
-    num_failed += run("test_zero", test_zero());
-    num_failed += run("test_identity", test_identity());
-    num_failed += run("test_add", test_add());
-    num_failed += run("test_mult_real", test_mult_real());
-    num_failed += run("test_mult_complex", test_mult_complex());
-    num_failed += run("test_canonicalize", test_canonicalize());
-    num_failed += run("test_copy", test_copy());
-    num_failed += run("test_num_terms", test_num_terms());
-    num_failed += run("test_num_qubits", test_num_qubits());
+    num_failed += RUN_TEST(test_zero);
+    num_failed += RUN_TEST(test_identity);
+    num_failed += RUN_TEST(test_add);
+    num_failed += RUN_TEST(test_mult_real);
+    num_failed += RUN_TEST(test_mult_complex);
+    num_failed += RUN_TEST(test_canonicalize);
+    num_failed += RUN_TEST(test_copy);
+    num_failed += RUN_TEST(test_num_terms);
+    num_failed += RUN_TEST(test_num_qubits);
 
     fprintf(stderr, "=== Number of failed subtests: %i\n", num_failed);
     fflush(stderr);
