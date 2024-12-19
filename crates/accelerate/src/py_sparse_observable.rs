@@ -208,7 +208,7 @@ impl PySparseTerm {
             coeff,
             bit_terms,
             sorted_indices.into_boxed_slice(),
-        );
+        )?;
         Ok(PySparseTerm {
             inner: Arc::new(RwLock::new(inner)),
         })

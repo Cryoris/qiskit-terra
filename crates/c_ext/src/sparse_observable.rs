@@ -92,22 +92,15 @@ pub extern "C" fn obs_push_copy(
     indices: &IndexVec,
     coeff: Complex64,
 ) {
-    if bit_terms.len() != indices.len() {
-        panic!("Mismatching length of bit_terms and indices.")
-    }
-
-    if indices.iter().any(|index| *index >= obs.num_qubits()) {
-        panic!("Index out of bounds.")
-    }
-
     let term = SparseTerm::new(
         obs.num_qubits(),
         coeff,
         bit_terms.clone().into_boxed_slice(),
         indices.clone().into_boxed_slice(),
-    );
+    )
+    .unwrap();
 
-    obs.add_term(term.view()).unwrap(); // TODO handle error
+    obs.add_term(term.view()).unwrap();
 }
 
 /// Add a term to the observable.
@@ -127,22 +120,31 @@ pub extern "C" fn obs_push_consume(
     let bit_terms = unsafe { Box::from_raw(bit_terms) };
     let indices = unsafe { Box::from_raw(indices) };
 
-    if bit_terms.len() != indices.len() {
-        panic!("Mismatching length of bit_terms and indices.")
-    }
-
-    if indices.iter().any(|index| *index >= obs.num_qubits()) {
-        panic!("Index out of bounds.")
-    }
-
     let term = SparseTerm::new(
         obs.num_qubits(),
         coeff,
         bit_terms.into_boxed_slice(),
         indices.into_boxed_slice(),
-    );
+    )
+    .unwrap(); // TODO handle error
 
     obs.add_term(term.view()).unwrap(); // TODO handle error
+}
+
+/// Get an observable term.
+///
+/// Example:
+///
+///     SparseObservable* obs = obs_identity(100);
+///     SparseTerm* term = obs_term(obs, 0);
+#[no_mangle]
+#[cfg(feature = "cbinding")]
+pub extern "C" fn obs_term(obs: &SparseObservable, index: u64) -> *mut SparseTerm {
+    // We could also add a read-only view on the SparseTermView,
+    // whose lifetime would implicitly be bound to the observable.
+    // For now, we'll only provide a copy, as the Python interface does.
+    let term = obs.term(index as usize).to_term();
+    Box::into_raw(Box::new(term))
 }
 
 /// Multiply the observable by a complex coefficient.
@@ -253,6 +255,8 @@ pub extern "C" fn obs_num_qubits(observable: &SparseObservable) -> u32 {
 
 /// Print the observable.
 ///
+/// @param term A pointer to the ``SparseObservable`` to print.
+///
 /// Example:
 ///
 ///     SparseObservable* obs = obs_identity(100);
@@ -261,4 +265,127 @@ pub extern "C" fn obs_num_qubits(observable: &SparseObservable) -> u32 {
 #[cfg(feature = "cbinding")]
 pub extern "C" fn obs_print(observable: &SparseObservable) {
     println!("{:?}", observable);
+}
+
+/// Deallocate the term.
+///
+/// The term is **not** automatically deallocated if the observable it
+/// is coming from is freed.
+///
+/// @param term A pointer to the ``SparseTerm`` to deallocate.
+///
+/// Example:
+///
+///     SparseObservable* obs = obs_identity(100);
+///     SparseTerm* term = obs_term(obs, 0);
+///
+///     obs_deallocate(obs);  // term is still allocated!
+///     obsterm_deallocate(term);
+#[no_mangle]
+#[cfg(feature = "cbinding")]
+pub extern "C" fn obsterm_deallocate(term: &mut SparseTerm) {
+    unsafe {
+        let _ = Box::from_raw(term);
+    }
+}
+
+/// Print a sparse term.
+///
+/// @param term A pointer to the ``SparseTerm`` to print.
+///
+/// Example:
+///     
+///     SparseObservable* obs = obs_identity(100);
+///     SparseTerm* term = obs_term(obs, 0);
+///     obsterm_print(term);
+#[no_mangle]
+#[cfg(feature = "cbinding")]
+pub extern "C" fn obsterm_print(term: &SparseTerm) {
+    println!("{:?}", term);
+}
+
+/// Get the coefficient of a sparse term.
+///
+/// @param term A pointer to the ``SparseTerm`` whose coefficient is returned.
+///
+/// @return The complex coefficient of the sparse term.
+///
+/// Example:
+///     
+///     SparseObservable* obs = obs_identity(100);
+///     SparseTerm* term = obs_term(obs, 0);
+///     complex double coeff = obsterm_coeff(term);
+#[no_mangle]
+#[cfg(feature = "cbinding")]
+pub extern "C" fn obsterm_coeff(term: &SparseTerm) -> Complex64 {
+    term.coeff()
+}
+
+/// Get the number of qubits the sparse term is defined on.
+///
+/// @param term A pointer to the ``SparseTerm`` whose number of qubits is returned.
+///
+/// @return The number of qubits the sparse term is defined on.
+///
+/// Example:
+///     
+///     SparseObservable* obs = obs_identity(100);
+///     SparseTerm* term = obs_term(obs, 0);
+///     uint32_t num_qubits = obsterm_num_qubits(term);
+#[no_mangle]
+#[cfg(feature = "cbinding")]
+pub extern "C" fn obsterm_num_qubits(term: &SparseTerm) -> u32 {
+    term.num_qubits()
+}
+
+/// Get the number of non-identity (nni) Paulis in the sparse term.
+///
+/// @param term A pointer to the ``SparseTerm``.
+///
+/// @return The number of non-identity Paulis.
+///
+/// Example:
+///     
+///     SparseObservable* obs = obs_identity(100);
+///     SparseTerm* term = obs_term(obs, 0);
+///     uint32_t nni = obsterm_nni(term);
+#[no_mangle]
+#[cfg(feature = "cbinding")]
+pub extern "C" fn obsterm_nni(term: &SparseTerm) -> u32 {
+    // the length can be at most equal to the number of qubits, thus u32 is enough
+    term.indices().len() as u32
+}
+
+/// A struct representing a (Pauli, qubit index) tuple.
+#[repr(C)]
+pub struct PauliTerm {
+    bit_term: BitTerm,
+    index: u32,
+}
+
+/// Get the (Pauli, qubit index) tuple inside term.
+///
+/// @param term A pointer to the ``SparseTerm``.
+/// @param index The index inside the sparse term.
+///
+/// @return The Pauli and qubit index it acts on as struct.
+///
+/// Example:
+///     
+///     SparseObservable* obs = obs_identity(100);
+///     SparseTerm* term = obs_term(obs, 0);
+///     uint32_t nni = obsterm_nni(term);
+#[no_mangle]
+#[cfg(feature = "cbinding")]
+pub extern "C" fn obsterm_pauli(term: &SparseTerm, index: u32) -> *mut PauliTerm {
+    let index = index as usize;
+    if index >= term.indices().len() {
+        panic!("Index out of range.");
+    }
+
+    let pauli_term = PauliTerm {
+        bit_term: term.bit_terms()[index],
+        index: term.indices()[index],
+    };
+    Box::into_raw(Box::new(pauli_term))
 }

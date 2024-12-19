@@ -14,12 +14,6 @@ use qiskit_accelerate::sparse_observable::BitTerm;
 
 #[no_mangle]
 #[cfg(feature = "cbinding")]
-pub extern "C" fn hello() {
-    println!("Sparse observable will go here!");
-}
-
-#[no_mangle]
-#[cfg(feature = "cbinding")]
 pub extern "C" fn bit_term(bit: u8) -> *mut BitTerm {
     let term = BitTerm::try_from(bit).unwrap();
     Box::into_raw(Box::new(term))

@@ -147,9 +147,9 @@ int test_custom_build()
     complex double coeff = 1;
 
     BitTermVec *bits = bit_terms_new(); // could use with_capacity here too, but we test new()
-    bit_terms_push(bits, X);            // these enums are defined in BitTerm
-    bit_terms_push(bits, Y);
-    bit_terms_push(bits, Z);
+    bit_terms_push(bits, BitTerm_X);    // these enums are defined in BitTerm
+    bit_terms_push(bits, BitTerm_Y);
+    bit_terms_push(bits, BitTerm_Z);
 
     IndexVec *indices = indices_with_capacity(3);
     indices_push(indices, 0);
@@ -164,6 +164,48 @@ int test_custom_build()
     double tol = 1e-6;
     SparseObservable *simplified = obs_canonicalize(obs, tol);
     obs_print(simplified);
+
+    obs_deallocate(obs);
+
+    return 0;
+}
+
+int test_term()
+{
+    printf("\n-- test_term\n");
+    SparseObservable *obs = obs_identity(100);
+
+    BitTermVec *bits = bit_terms_with_capacity(3);
+    bit_terms_push(bits, BitTerm_X);
+    bit_terms_push(bits, BitTerm_Y);
+    bit_terms_push(bits, BitTerm_Z);
+
+    IndexVec *indices = indices_with_capacity(3);
+    indices_push(indices, 0);
+    indices_push(indices, 1);
+    indices_push(indices, 2);
+
+    complex double coeff = 1 + I;
+
+    obs_push_consume(obs, bits, indices, coeff);
+    obs_print(obs);
+
+    uint64_t num_terms = obs_num_terms(obs);
+    for (uint64_t i = 0; i < num_terms; i++)
+    {
+        SparseTerm *term = obs_term(obs, i);
+        obsterm_print(term);
+        uint32_t nni = obsterm_nni(term);
+        printf("nni: %u\n", nni);
+
+        for (uint32_t n = 0; n < nni; n++)
+        {
+            PauliTerm *pterm = obsterm_pauli(term, n);
+            printf("Pauli: %i Index: %i\n", pterm->bit_term, pterm->index);
+        }
+
+        obsterm_deallocate(term);
+    }
 
     obs_deallocate(obs);
 
@@ -187,6 +229,7 @@ int main()
     test_num_terms();
     test_num_qubits();
     test_custom_build();
+    test_term();
 
     return 0;
 }
