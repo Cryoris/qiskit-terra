@@ -1,31 +1,32 @@
 #include <stdio.h>
 #include <complex.h>
+#include "common.h"
 #include "qiskit.h"
 
 int test_zero()
 {
-    printf("\n-- test_zero\n");
     SparseObservable *obs = obs_zero(100);
     obs_print(obs);
+    // TODO: actually perform some equality check (requires obs_term)
     obs_deallocate(obs);
     return 0;
 }
 
 int test_identity()
 {
-    printf("\n-- test_identity\n");
     SparseObservable *obs = obs_identity(100);
     obs_print(obs);
+    // TODO: actually perform some equality check (requires obs_term)
     obs_deallocate(obs);
     return 0;
 }
 
 int test_copy()
 {
-    printf("\n-- test_copy\n");
     SparseObservable *obs = obs_identity(100);
     SparseObservable *copied = obs_copy(obs);
     obs_print(copied);
+    // TODO: actually perform some equality check (requires obs_term)
     obs_deallocate(obs);
     obs_deallocate(copied);
     return 0;
@@ -33,12 +34,12 @@ int test_copy()
 
 int test_add()
 {
-    printf("\n-- test_add\n");
     SparseObservable *left = obs_identity(100);
     SparseObservable *right = obs_identity(100);
     SparseObservable *obs = obs_add(left, right);
 
     obs_print(obs);
+    // TODO: actually perform some equality check (requires obs_term)
 
     obs_deallocate(left);
     obs_deallocate(right);
@@ -49,13 +50,13 @@ int test_add()
 
 int test_mult_real()
 {
-    printf("\n-- test_mult_real\n");
     SparseObservable *obs = obs_identity(100);
 
     double coeff = 2;
     SparseObservable *result = obs_multiply(obs, coeff);
 
     obs_print(result);
+    // TODO: actually perform some equality check (requires obs_term)
 
     obs_deallocate(obs);
     obs_deallocate(result);
@@ -65,13 +66,13 @@ int test_mult_real()
 
 int test_mult_complex()
 {
-    printf("\n-- test_mult_complex\n");
     SparseObservable *obs = obs_identity(100);
 
     complex double coeff = 2 + 2 * I;
     SparseObservable *result = obs_multiply(obs, coeff);
 
     obs_print(result);
+    // TODO: actually perform some equality check (requires obs_term)
 
     obs_deallocate(obs);
     obs_deallocate(result);
@@ -81,7 +82,6 @@ int test_mult_complex()
 
 int test_canonicalize()
 {
-    printf("\n-- test_canonicalize\n");
     SparseObservable *left = obs_identity(100);
     SparseObservable *right = obs_identity(100);
     SparseObservable *obs = obs_add(left, right);
@@ -90,6 +90,7 @@ int test_canonicalize()
     SparseObservable *simplified = obs_canonicalize(obs, tol);
 
     obs_print(simplified);
+    // TODO: actually perform some equality check (requires obs_term)
 
     obs_deallocate(obs);
     obs_deallocate(right);
@@ -101,58 +102,68 @@ int test_canonicalize()
 
 int test_num_terms()
 {
-    printf("\n-- test_num_terms\n");
-
+    int result = Ok;
     uint64_t num_terms;
 
     SparseObservable *zero = obs_zero(100);
     num_terms = obs_num_terms(zero);
-    printf("zero: %llu\n", num_terms);
+    if (num_terms != 0)
+    {
+        result = EqualityError;
+    }
     obs_deallocate(zero);
 
     SparseObservable *iden = obs_identity(100);
     num_terms = obs_num_terms(iden);
-    printf("identity: %llu\n", num_terms);
+    if (num_terms != 1)
+    {
+        result = EqualityError;
+    }
     obs_deallocate(iden);
 
-    return 0;
+    return result;
 }
 
 int test_num_qubits()
 {
-    printf("\n-- test_num_qubits\n");
-
+    int result = Ok;
     uint32_t num_qubits;
 
     SparseObservable *obs = obs_zero(1);
     num_qubits = obs_num_qubits(obs);
-    printf("1 qubit: %u\n", num_qubits);
+    if (num_qubits != 1)
+    {
+        result = EqualityError;
+    }
     obs_deallocate(obs);
 
     SparseObservable *obs100 = obs_zero(100);
     num_qubits = obs_num_qubits(obs100);
-    printf("100 qubits: %u\n", num_qubits);
+    if (num_qubits != 100)
+    {
+        result = EqualityError;
+    }
     obs_deallocate(obs100);
 
-    return 0;
+    return result;
 }
 
-int main()
+int test_sparse_observable()
 {
-    // BitTerm *bit = bit_term(1);
-    // printf("%i", *bit);
-    // bit_term_print(bit);
-    // bit_term_deallocate(bit);
+    int num_failed = 0;
 
-    test_zero();
-    test_identity();
-    test_add();
-    test_mult_real();
-    test_mult_complex();
-    test_canonicalize();
-    test_copy();
-    test_num_terms();
-    test_num_qubits();
+    num_failed += RUN_TEST(test_zero);
+    num_failed += RUN_TEST(test_identity);
+    num_failed += RUN_TEST(test_add);
+    num_failed += RUN_TEST(test_mult_real);
+    num_failed += RUN_TEST(test_mult_complex);
+    num_failed += RUN_TEST(test_canonicalize);
+    num_failed += RUN_TEST(test_copy);
+    num_failed += RUN_TEST(test_num_terms);
+    num_failed += RUN_TEST(test_num_qubits);
 
-    return 0;
+    fprintf(stderr, "=== Number of failed subtests: %i\n", num_failed);
+    fflush(stderr);
+
+    return num_failed;
 }
