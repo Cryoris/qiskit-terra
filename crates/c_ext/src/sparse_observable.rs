@@ -184,6 +184,26 @@ pub extern "C" fn obs_identity(num_qubits: u32) -> *mut SparseObservable {
     Box::into_raw(Box::new(obs))
 }
 
+/// Deallocate the observable.
+///
+/// Memory deallocation is user responsibility. Every constructed observable
+/// must be deallocated manually to avoid memory leakage.
+///
+/// @param obs A pointer to the observable to free.
+///
+/// Example:
+///
+///     SparseObservable* obs = obs_zero(100);
+///     obs_deallocate(obs);
+///
+#[no_mangle]
+#[cfg(feature = "cbinding")]
+pub extern "C" fn obs_deallocate(obs: &mut SparseObservable) {
+    unsafe {
+        let _ = Box::from_raw(obs);
+    }
+}
+
 /// Add a term to the observable by copy.
 ///
 /// A term is defined by it's bit terms, along with their indices, and the complex coefficient.
@@ -390,26 +410,27 @@ pub extern "C" fn obs_copy(obs: &SparseObservable) -> *mut SparseObservable {
     Box::into_raw(Box::new(copied))
 }
 
-/// Deallocate the observable.
+/// Compare two observables for equality.
 ///
-/// Memory deallocation is user responsibility. Every constructed observable
-/// must be deallocated manually to avoid memory leakage.
+/// Note that this does not compare mathematical equality, but data equality. This means
+/// that two observables might represent the same observable but not compare as equal.
 ///
-/// @param obs A pointer to the observable to free.
+/// @param observable A pointer to one observable.
+/// @param other A pointer to another observable.
+///
+/// @return ``true`` if the observables are equal, ``false`` otherwise.
 ///
 /// Example:
 ///
-///     SparseObservable* obs = obs_zero(100);
-///     obs_deallocate(obs);
+///     SparseObservable* observable = obs_identity(100);
+///     SparseObservable* other = obs_identity(100);
+///     bool are_equal = obs_equal(observable, other);
 ///
 #[no_mangle]
 #[cfg(feature = "cbinding")]
-pub extern "C" fn obs_deallocate(obs: &mut SparseObservable) {
-    unsafe {
-        let _ = Box::from_raw(obs);
-    }
+pub extern "C" fn obs_equal(observable: &SparseObservable, other: &SparseObservable) -> bool {
+    observable.eq(other)
 }
-
 /// Get the number of terms in the observable.
 ///
 /// @param observable A pointer to the observable.

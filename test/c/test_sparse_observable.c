@@ -6,18 +6,28 @@
 int test_zero()
 {
     SparseObservable *obs = obs_zero(100);
-    obs_print(obs);
-    // TODO: actually perform some equality check (requires obs_term)
+    uint64_t num_terms = obs_num_terms(obs);
+    uint32_t num_qubits = obs_num_qubits(obs);
     obs_deallocate(obs);
+
+    if (num_terms != 0 || num_qubits != 100)
+    {
+        return EqualityError;
+    }
     return 0;
 }
 
 int test_identity()
 {
     SparseObservable *obs = obs_identity(100);
-    obs_print(obs);
-    // TODO: actually perform some equality check (requires obs_term)
+    uint64_t num_terms = obs_num_terms(obs);
+    uint32_t num_qubits = obs_num_qubits(obs);
     obs_deallocate(obs);
+
+    if (num_terms != 1 || num_qubits != 100)
+    {
+        return EqualityError;
+    }
     return 0;
 }
 
@@ -25,10 +35,17 @@ int test_copy()
 {
     SparseObservable *obs = obs_identity(100);
     SparseObservable *copied = obs_copy(obs);
-    obs_print(copied);
-    // TODO: actually perform some equality check (requires obs_term)
+
+    bool are_equal = obs_equal(obs, copied);
+
     obs_deallocate(obs);
     obs_deallocate(copied);
+
+    if (!are_equal)
+    {
+        return EqualityError;
+    }
+
     return 0;
 }
 
@@ -38,12 +55,16 @@ int test_add()
     SparseObservable *right = obs_identity(100);
     SparseObservable *obs = obs_add(left, right);
 
-    obs_print(obs);
-    // TODO: actually perform some equality check (requires obs_term)
+    uint64_t num_terms = obs_num_terms(obs);
 
     obs_deallocate(left);
     obs_deallocate(right);
     obs_deallocate(obs);
+
+    if (num_terms != 2)
+    {
+        return EqualityError;
+    }
 
     return 0;
 }
