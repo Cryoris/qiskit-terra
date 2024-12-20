@@ -13,6 +13,7 @@
 use num_complex::Complex64;
 use qiskit_accelerate::sparse_observable::{BitTerm, SparseObservable, SparseTerm};
 
+/// @ingroup IndexVec
 /// A vector of indices as ``uint_32t``.
 #[derive(Debug, Clone)]
 pub struct IndexVec {
@@ -76,6 +77,7 @@ pub extern "C" fn pauli_deallocate(pauli: &mut PauliTerm) {
     }
 }
 
+/// @ingroup IndexVec
 /// Create a new index vector of ``uint32_t``\ s.
 ///
 /// @return A pointer to an empty index vector.
@@ -91,6 +93,7 @@ pub extern "C" fn indices_new() -> *mut IndexVec {
     Box::into_raw(Box::new(indices))
 }
 
+/// @ingroup IndexVec
 /// Create a new index vector of ``uint32_t``\ s, with a given capacity.
 ///
 /// @param capacity The capacity to allocate for the vector.
@@ -111,6 +114,7 @@ pub extern "C" fn indices_with_capacity(capacity: u64) -> *mut IndexVec {
     Box::into_raw(Box::new(indices))
 }
 
+/// @ingroup IndexVec
 /// Free the index vector.
 ///
 /// @param indices A pointer to the index vector to be freed.
@@ -129,6 +133,7 @@ pub extern "C" fn indices_deallocate(indices: &mut IndexVec) {
     }
 }
 
+/// @ingroup IndexVec
 /// Push a new index onto the index vector.
 ///
 /// @param indices A pointer to the index vector.

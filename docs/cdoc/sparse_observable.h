@@ -21,3 +21,7 @@
 /**
  * @defgroup BitTermVec BitTermVec
  */
+
+/**
+ * @defgroup IndexVec IndexVec
+ */

@@ -11,3 +11,5 @@ Sparse Observable
 .. doxygengroup:: PauliTermVec
 
 .. doxygengroup:: BitTermVec
+
+.. doxygengroup:: IndexVec
