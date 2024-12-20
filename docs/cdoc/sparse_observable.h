@@ -13,3 +13,7 @@
 /**
  * @defgroup PauliTerm PauliTerm
  */
+
+/**
+ * @defgroup PauliTermVec PauliTermVec
+ */

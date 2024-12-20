@@ -31,6 +31,7 @@ pub struct BitTermVec {
     values: Vec<BitTerm>,
 }
 
+/// @ingroup PauliTermVec
 /// A Pauli term vector, containing ``(index, bit_term)`` tuples.
 #[derive(Debug, Clone)]
 pub struct PauliTermVec {
@@ -212,6 +213,7 @@ pub extern "C" fn bit_terms_push(bit_terms: &mut BitTermVec, value: BitTerm) {
     bit_terms.values.push(value)
 }
 
+/// @ingroup PauliTermVec
 /// Create a new Pauli term vector.
 ///
 /// @return A pointer to an empty Pauli term vector.
@@ -230,6 +232,7 @@ pub extern "C" fn paulis_new() -> *mut PauliTermVec {
     Box::into_raw(Box::new(paulis))
 }
 
+/// @ingroup PauliTermVec
 /// Create a new Pauli term vector, with a given capacity.
 ///
 /// @param capacity The capacity to allocate for the vector.
@@ -251,6 +254,7 @@ pub extern "C" fn paulis_with_capacity(capacity: u64) -> *mut PauliTermVec {
     Box::into_raw(Box::new(paulis))
 }
 
+/// @ingroup PauliTermVec
 /// Free the Pauli term vector.
 ///
 /// @param paulis A pointer to the index vector to be freed.
@@ -269,6 +273,7 @@ pub extern "C" fn paulis_deallocate(paulis: &mut PauliTermVec) {
     }
 }
 
+/// @ingroup PauliTermVec
 /// Push a new ``(bit_term, index)`` tuple onto the Pauli term vector.
 ///
 /// @param paulis A pointer to the Pauli term vector.
