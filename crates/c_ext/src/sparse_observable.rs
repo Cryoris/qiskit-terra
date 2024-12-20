@@ -22,6 +22,7 @@ pub struct IndexVec {
     values: Vec<u32>,
 }
 
+/// @ingroup BitTermVec
 /// A vector of ``BitTerm`` enum values.
 #[derive(Debug, Clone)]
 pub struct BitTermVec {
@@ -144,6 +145,7 @@ pub extern "C" fn indices_push(indices: &mut IndexVec, value: u32) {
     indices.values.push(value)
 }
 
+/// @ingroup BitTermVec
 /// Create a new vector of ``BitTerm``\ s.
 ///
 /// @return A pointer to an empty bit term vector.
@@ -159,6 +161,7 @@ pub extern "C" fn bit_terms_new() -> *mut BitTermVec {
     Box::into_raw(Box::new(bit_terms))
 }
 
+/// @ingroup BitTermVec
 /// Create a new bit term vector of ``BitTerm``\ s, with a given capacity.
 ///
 /// @param capacity The capacity to allocate for the vector.
@@ -179,6 +182,7 @@ pub extern "C" fn bit_terms_with_capacity(capacity: u64) -> *mut BitTermVec {
     Box::into_raw(Box::new(bit_terms))
 }
 
+/// @ingroup BitTermVec
 /// Free the bit term vector.
 ///
 /// @param bit_terms A pointer to the bit term vector to be freed.
@@ -197,6 +201,7 @@ pub extern "C" fn bit_terms_deallocate(bit_terms: &mut BitTermVec) {
     }
 }
 
+/// @ingroup BitTermVec
 /// Push a new bit term onto the bit term vector.
 ///
 /// @param bit_terms A pointer to the bit term vector.
