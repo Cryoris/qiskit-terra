@@ -20,7 +20,7 @@ __pycache__/
 *.so
 
 # The C API header is generated automatically, therefore we do not upload it.
-qiskit.h  
+qiskit.h
 
 # Distribution / packaging
 .Python
@@ -145,6 +145,7 @@ qiskit/quantum_info/states/cython/*.cpp
 /docs/stubs
 /docs/locale
 /executed_tutorials
+/docs/xml
 
 # Notebook testing images
 test/visual/mpl/circuit/circuit_results/*.png
