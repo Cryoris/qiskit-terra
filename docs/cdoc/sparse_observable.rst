@@ -2,4 +2,4 @@
 Sparse Observable
 =================
 
-.. doxygenindex::
+.. doxygengroup:: sparse_observable_functions
