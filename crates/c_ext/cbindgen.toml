@@ -3,9 +3,6 @@ sys_includes = ["complex.h"]
 after_includes = """
 typedef float complex Complex32;
 typedef double complex Complex64;
-
-/// @defgroup sparse_observable_functions SparseObservable Functions
-/// This is a group of functions for interacting with opaque SparseObservable instances.
 """
 
 [parse]
