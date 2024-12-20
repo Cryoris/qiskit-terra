@@ -69,34 +69,34 @@ int test_add()
     return 0;
 }
 
-int test_mult_real()
+int test_mult()
 {
-    SparseObservable *obs = obs_identity(100);
+    complex double coeffs[3] = {2, 2 * I, 2 + 2 * I};
 
-    double coeff = 2;
-    SparseObservable *result = obs_multiply(obs, coeff);
+    for (int i = 0; i < 3; i++)
+    {
+        SparseObservable *obs = obs_identity(100);
 
-    obs_print(result);
-    // TODO: actually perform some equality check (requires obs_term)
+        SparseObservable *result = obs_multiply(obs, coeffs[i]);
 
-    obs_deallocate(obs);
-    obs_deallocate(result);
+        // construct the expected observable: coeff * Id
+        SparseObservable *expected = obs_zero(100);
+        PauliTermVec *paulis = paulis_new();
+        obs_push_consume(expected, paulis, coeffs[i]);
 
-    return 0;
-}
+        // perform the check
+        bool is_equal = obs_equal(expected, result);
 
-int test_mult_complex()
-{
-    SparseObservable *obs = obs_identity(100);
+        // deallocate before returning
+        obs_deallocate(obs);
+        obs_deallocate(result);
+        obs_deallocate(expected);
 
-    complex double coeff = 2 + 2 * I;
-    SparseObservable *result = obs_multiply(obs, coeff);
-
-    obs_print(result);
-    // TODO: actually perform some equality check (requires obs_term)
-
-    obs_deallocate(obs);
-    obs_deallocate(result);
+        if (!is_equal)
+        {
+            return EqualityError;
+        }
+    }
 
     return 0;
 }
@@ -110,13 +110,23 @@ int test_canonicalize()
     double tol = 1e-5;
     SparseObservable *simplified = obs_canonicalize(obs, tol);
 
-    obs_print(simplified);
-    // TODO: actually perform some equality check (requires obs_term)
+    // construct the expected observable: 2 * Id
+    SparseObservable *expected = obs_zero(100);
+    PauliTermVec *paulis = paulis_new();
+    obs_push_consume(expected, paulis, 2.0);
+
+    bool is_equal = obs_equal(expected, simplified);
 
     obs_deallocate(obs);
     obs_deallocate(right);
     obs_deallocate(left);
     obs_deallocate(simplified);
+    obs_deallocate(expected);
+
+    if (!is_equal)
+    {
+        return EqualityError;
+    }
 
     return 0;
 }
@@ -176,26 +186,27 @@ int test_custom_build()
 
     complex double coeff = 1;
 
-    BitTermVec *bits = bit_terms_new(); // could use with_capacity here too, but we test new()
-    bit_terms_push(bits, BitTerm_X);    // these enums are defined in BitTerm
-    bit_terms_push(bits, BitTerm_Y);
-    bit_terms_push(bits, BitTerm_Z);
+    PauliTermVec *paulis = paulis_new(); // could use with_capacity here, but we test new()
+    paulis_push(paulis, BitTerm_X, 0);
+    paulis_push(paulis, BitTerm_Y, 1);
+    paulis_push(paulis, BitTerm_Z, 2);
 
-    IndexVec *indices = indices_with_capacity(3);
-    indices_push(indices, 0);
-    indices_push(indices, 1);
-    indices_push(indices, 2);
-
-    obs_push_copy(obs, bits, indices, coeff);
-    obs_push_consume(obs, bits, indices, coeff); // consumes the bits and indices vectors
-
-    obs_print(obs); // TODO do some check
+    obs_push_copy(obs, paulis, coeff);
+    obs_push_consume(obs, paulis, coeff); // consumes the bits and indices vectors
 
     double tol = 1e-6;
     SparseObservable *simplified = obs_canonicalize(obs, tol);
-    obs_print(simplified); // TODO do some check
+
+    uint64_t num_terms = obs_num_terms(obs);
+    uint64_t num_terms_simplified = obs_num_terms(simplified);
 
     obs_deallocate(obs);
+    obs_deallocate(simplified);
+
+    if (num_terms != 2 || num_terms_simplified != 1)
+    {
+        return EqualityError;
+    }
 
     return 0;
 }
@@ -204,33 +215,36 @@ int test_term()
 {
     SparseObservable *obs = obs_identity(100);
 
-    BitTermVec *bits = bit_terms_with_capacity(3);
-    bit_terms_push(bits, BitTerm_X);
-    bit_terms_push(bits, BitTerm_Y);
-    bit_terms_push(bits, BitTerm_Z);
-
-    IndexVec *indices = indices_with_capacity(3);
-    indices_push(indices, 0);
-    indices_push(indices, 1);
-    indices_push(indices, 2);
+    PauliTermVec *paulis = paulis_with_capacity(3);
+    paulis_push(paulis, BitTerm_X, 0);
+    paulis_push(paulis, BitTerm_Y, 1);
+    paulis_push(paulis, BitTerm_Z, 2);
 
     complex double coeff = 1 + I;
 
-    obs_push_consume(obs, bits, indices, coeff);
-    obs_print(obs);
+    obs_push_consume(obs, paulis, coeff);
+
+    // some placeholders to store the results
+    int nnis[2] = {-1, -1};
+    int bits[3] = {-1, -1, -1};
+    int indices[3] = {-1, -1, -1};
 
     uint64_t num_terms = obs_num_terms(obs);
     for (uint64_t i = 0; i < num_terms; i++)
     {
         SparseTerm *term = obs_term(obs, i);
-        obsterm_print(term);
         uint32_t nni = obsterm_nni(term);
-        printf("nni: %u\n", nni); // todo do some check
+        nnis[i] = nni; // store to compare later
 
         for (uint32_t n = 0; n < nni; n++)
         {
             PauliTerm *pterm = obsterm_pauli(term, n);
-            printf("Pauli: %i Index: %i\n", pterm->bit_term, pterm->index); // todo some check
+
+            // this loop is only called once, so we can use ``n`` to index here
+            bits[n] = pterm->bit_term;
+            indices[n] = pterm->index;
+
+            pauli_deallocate(pterm);
         }
 
         obsterm_deallocate(term);
@@ -238,7 +252,36 @@ int test_term()
 
     obs_deallocate(obs);
 
-    return 0;
+    int result = 0;
+    int expected_nnis[2] = {0, 3};
+    int expected_bits[3] = {BitTerm_X, BitTerm_Y, BitTerm_Z};
+    int expected_indices[3] = {0, 1, 2};
+
+    // check number of terms
+    if (num_terms != 2)
+    {
+        result = EqualityError;
+    }
+
+    // check NNIs
+    for (int i = 0; i < 2; i++)
+    {
+        if (nnis[i] != expected_nnis[i])
+        {
+            result = EqualityError;
+        }
+    }
+
+    // check bit terms and indices
+    for (int n = 0; n < 3; n++)
+    {
+        if (indices[n] != expected_indices[n] || bits[n] != expected_bits[n])
+        {
+            result = EqualityError;
+        }
+    }
+
+    return result;
 }
 
 int test_sparse_observable()
@@ -247,8 +290,8 @@ int test_sparse_observable()
     num_failed += RUN_TEST(test_zero);
     num_failed += RUN_TEST(test_identity);
     num_failed += RUN_TEST(test_add);
-    num_failed += RUN_TEST(test_mult_real);
-    num_failed += RUN_TEST(test_mult_complex);
+    num_failed += RUN_TEST(test_mult);
+    fflush(stderr);
     num_failed += RUN_TEST(test_canonicalize);
     num_failed += RUN_TEST(test_copy);
     num_failed += RUN_TEST(test_num_terms);
@@ -257,7 +300,6 @@ int test_sparse_observable()
     num_failed += RUN_TEST(test_term);
 
     fprintf(stderr, "=== Number of failed subtests: %i\n", num_failed);
-    fflush(stderr);
 
     return num_failed;
 }
