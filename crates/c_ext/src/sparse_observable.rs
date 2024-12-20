@@ -40,6 +40,7 @@ pub struct PauliTermVec {
     bit_terms: Vec<BitTerm>,
 }
 
+/// @ingroup PauliTerm
 /// A struct representing a (Pauli, qubit index) tuple.
 #[repr(C)]
 pub struct PauliTerm {
@@ -47,6 +48,7 @@ pub struct PauliTerm {
     index: u32,
 }
 
+/// @ingroup PauliTerm
 /// Free the Pauli term.
 ///
 /// @param A pointer to the Pauli term struct.
