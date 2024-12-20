@@ -561,6 +561,8 @@ pub extern "C" fn obs_copy(obs: &SparseObservable) -> *mut SparseObservable {
 pub extern "C" fn obs_equal(observable: &SparseObservable, other: &SparseObservable) -> bool {
     observable.eq(other)
 }
+
+/// @ingroup SparseObservable
 /// Get the number of terms in the observable.
 ///
 /// @param observable A pointer to the observable.
@@ -578,6 +580,7 @@ pub extern "C" fn obs_num_terms(observable: &SparseObservable) -> u64 {
     observable.num_terms() as u64
 }
 
+/// @ingroup SparseObservable
 /// Get the number of qubits the observable is defined on.
 ///
 /// @param observable A pointer to the observable.
@@ -595,6 +598,7 @@ pub extern "C" fn obs_num_qubits(observable: &SparseObservable) -> u32 {
     observable.num_qubits()
 }
 
+/// @ingroup SparseObservable
 /// Print the observable.
 ///
 /// @param term A pointer to the ``SparseObservable`` to print.
