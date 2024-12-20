@@ -1427,13 +1427,40 @@ impl SparseTerm {
         coeff: Complex64,
         bit_terms: Box<[BitTerm]>,
         indices: Box<[u32]>,
-    ) -> Self {
-        Self {
+    ) -> Result<Self, CoherenceError> {
+        if bit_terms.len() != indices.len() {
+            return Err(CoherenceError::MismatchedItemCount {
+                bit_terms: bit_terms.len(),
+                indices: indices.len(),
+            });
+        }
+
+        if indices.iter().any(|index| *index >= num_qubits) {
+            return Err(CoherenceError::BitIndexTooHigh);
+        }
+
+        Ok(Self {
             num_qubits,
             coeff,
             bit_terms,
             indices,
-        }
+        })
+    }
+
+    pub fn num_qubits(&self) -> u32 {
+        self.num_qubits
+    }
+
+    pub fn coeff(&self) -> Complex64 {
+        self.coeff
+    }
+
+    pub fn indices<'a>(&'a self) -> &'a [u32] {
+        &self.indices
+    }
+
+    pub fn bit_terms<'a>(&'a self) -> &'a [BitTerm] {
+        &self.bit_terms
     }
 
     pub fn view(&self) -> SparseTermView {

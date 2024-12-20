@@ -8,3 +8,6 @@ typedef double complex Complex64;
 [parse]
 parse_deps = true
 include = ["qiskit-accelerate"]
+
+[enum]
+prefix_with_name = true
