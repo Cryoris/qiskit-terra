@@ -13,8 +13,64 @@
 use num_complex::Complex64;
 use qiskit_accelerate::sparse_observable::{BitTerm, SparseObservable, SparseTerm};
 
-type IndexVec = Vec<u32>;
-type BitTermVec = Vec<BitTerm>;
+/// A vector of indices as ``uint_32t``.
+#[derive(Debug, Clone)]
+pub struct IndexVec {
+    // We use a struct instead of a typedef (type IndexVec = Vec<u32>) to avoid
+    // cbindgen to introduce a redundant Vec_u32 type. This could maybe be changed in
+    // future.
+    values: Vec<u32>,
+}
+
+/// A vector of ``BitTerm`` enum values.
+#[derive(Debug, Clone)]
+pub struct BitTermVec {
+    // We use a struct instead of a typedef (type IndexVec = Vec<u32>) to avoid
+    // cbindgen to introduce a redundant Vec_u32 type. This could maybe be changed in
+    // future.
+    values: Vec<BitTerm>,
+}
+
+/// A Pauli term vector, containing ``(index, bit_term)`` tuples.
+#[derive(Debug, Clone)]
+pub struct PauliTermVec {
+    // We store the data as two separate vectors, which simplified constructing
+    // SparseTerms later on, which expect this format.
+    indices: Vec<u32>,
+    bit_terms: Vec<BitTerm>,
+}
+
+/// A struct representing a (Pauli, qubit index) tuple.
+#[repr(C)]
+pub struct PauliTerm {
+    bit_term: BitTerm,
+    index: u32,
+}
+
+/// Free the Pauli term.
+///
+/// @param A pointer to the Pauli term struct.
+///
+/// Example:
+///     
+///     SparseObservable *obs = obs_zero(100);
+///     PauliTermVec *paulis = paulis_new();
+///     paulis_push(paulis, BitTerm_X, 99);  // push X_99 onto the vector
+///     obs_push_consume(obs, paulis, 2.0);  // add the Pauli term 2 * X_99 to the observable
+///  
+///     SparseTerm *term = obs_term(obs, 0);  // get the 0th Pauli term in the observable
+///     PauliTerm *pauli = obsterm_pauli(term, 0);  // get the 0th Pauli in the Pauli term
+///     printf("Bit term: %i, Index: %i", pauli->bit_term, pauli->index);
+///
+///     pauli_deallocate(pauli);  // deallocate the struct
+///
+#[no_mangle]
+#[cfg(feature = "cbinding")]
+pub extern "C" fn pauli_deallocate(pauli: &mut PauliTerm) {
+    unsafe {
+        let _ = Box::from_raw(pauli);
+    }
+}
 
 /// Create a new index vector of ``uint32_t``\ s.
 ///
@@ -27,7 +83,7 @@ type BitTermVec = Vec<BitTerm>;
 #[no_mangle]
 #[cfg(feature = "cbinding")]
 pub extern "C" fn indices_new() -> *mut IndexVec {
-    let indices = IndexVec::new();
+    let indices = IndexVec { values: Vec::new() };
     Box::into_raw(Box::new(indices))
 }
 
@@ -45,7 +101,9 @@ pub extern "C" fn indices_new() -> *mut IndexVec {
 #[no_mangle]
 #[cfg(feature = "cbinding")]
 pub extern "C" fn indices_with_capacity(capacity: u64) -> *mut IndexVec {
-    let indices = IndexVec::with_capacity(capacity as usize);
+    let indices = IndexVec {
+        values: Vec::with_capacity(capacity as usize),
+    };
     Box::into_raw(Box::new(indices))
 }
 
@@ -80,7 +138,7 @@ pub extern "C" fn indices_deallocate(indices: &mut IndexVec) {
 #[no_mangle]
 #[cfg(feature = "cbinding")]
 pub extern "C" fn indices_push(indices: &mut IndexVec, value: u32) {
-    indices.push(value)
+    indices.values.push(value)
 }
 
 /// Create a new vector of ``BitTerm``\ s.
@@ -94,7 +152,7 @@ pub extern "C" fn indices_push(indices: &mut IndexVec, value: u32) {
 #[no_mangle]
 #[cfg(feature = "cbinding")]
 pub extern "C" fn bit_terms_new() -> *mut BitTermVec {
-    let bit_terms = BitTermVec::new();
+    let bit_terms = BitTermVec { values: Vec::new() };
     Box::into_raw(Box::new(bit_terms))
 }
 
@@ -112,7 +170,9 @@ pub extern "C" fn bit_terms_new() -> *mut BitTermVec {
 #[no_mangle]
 #[cfg(feature = "cbinding")]
 pub extern "C" fn bit_terms_with_capacity(capacity: u64) -> *mut BitTermVec {
-    let bit_terms = BitTermVec::with_capacity(capacity as usize);
+    let bit_terms = BitTermVec {
+        values: Vec::with_capacity(capacity as usize),
+    };
     Box::into_raw(Box::new(bit_terms))
 }
 
@@ -147,7 +207,82 @@ pub extern "C" fn bit_terms_deallocate(bit_terms: &mut BitTermVec) {
 #[no_mangle]
 #[cfg(feature = "cbinding")]
 pub extern "C" fn bit_terms_push(bit_terms: &mut BitTermVec, value: BitTerm) {
-    bit_terms.push(value)
+    bit_terms.values.push(value)
+}
+
+/// Create a new Pauli term vector.
+///
+/// @return A pointer to an empty Pauli term vector.
+///
+/// Example:
+///
+///     PauliTermVec *paulis = paulis_new();
+///
+#[no_mangle]
+#[cfg(feature = "cbinding")]
+pub extern "C" fn paulis_new() -> *mut PauliTermVec {
+    let paulis = PauliTermVec {
+        indices: Vec::new(),
+        bit_terms: Vec::new(),
+    };
+    Box::into_raw(Box::new(paulis))
+}
+
+/// Create a new Pauli term vector, with a given capacity.
+///
+/// @param capacity The capacity to allocate for the vector.
+///
+/// @return A pointer to an empty Pauli term vector.
+///
+/// Example:
+///
+///     uint64_t capacity = 10;
+///     PauliTermVec *paulis = paulis_with_capacity(capacity);
+///
+#[no_mangle]
+#[cfg(feature = "cbinding")]
+pub extern "C" fn paulis_with_capacity(capacity: u64) -> *mut PauliTermVec {
+    let paulis = PauliTermVec {
+        indices: Vec::with_capacity(capacity as usize),
+        bit_terms: Vec::with_capacity(capacity as usize),
+    };
+    Box::into_raw(Box::new(paulis))
+}
+
+/// Free the Pauli term vector.
+///
+/// @param paulis A pointer to the index vector to be freed.
+///
+/// Example:
+///
+///     PauliTermVec *paulis = paulis_new();
+///     paulis_push(paulis, BitTerm_Z, 2);
+///     paulis_deallocate(paulis);
+///
+#[no_mangle]
+#[cfg(feature = "cbinding")]
+pub extern "C" fn paulis_deallocate(paulis: &mut PauliTermVec) {
+    unsafe {
+        let _ = Box::from_raw(paulis);
+    }
+}
+
+/// Push a new ``(bit_term, index)`` tuple onto the Pauli term vector.
+///
+/// @param paulis A pointer to the Pauli term vector.
+/// @param bit_term The bit term to add.
+/// @param index The index the bit term acts on.
+///
+/// Example:
+///
+///     PauliTermVec *paulis = paulis_new();
+///     paulis_push(paulis, BitTerm_Z, 2);  // push Z_2 onto the vector
+///
+#[no_mangle]
+#[cfg(feature = "cbinding")]
+pub extern "C" fn paulis_push(paulis: &mut PauliTermVec, bit_term: BitTerm, index: u32) {
+    paulis.bit_terms.push(bit_term);
+    paulis.indices.push(index);
 }
 
 /// Construct the zero observable (without any terms).
@@ -158,7 +293,7 @@ pub extern "C" fn bit_terms_push(bit_terms: &mut BitTermVec, value: BitTerm) {
 ///
 /// Example:
 ///
-///     SparseObservable* zero = obs_zero(100);
+///     SparseObservable *zero = obs_zero(100);
 ///
 #[no_mangle]
 #[cfg(feature = "cbinding")]
@@ -175,7 +310,7 @@ pub extern "C" fn obs_zero(num_qubits: u32) -> *mut SparseObservable {
 ///
 /// Example:
 ///
-///     SparseObservable* identity = obs_identity(100);
+///     SparseObservable *identity = obs_identity(100);
 ///
 #[no_mangle]
 #[cfg(feature = "cbinding")]
@@ -193,7 +328,7 @@ pub extern "C" fn obs_identity(num_qubits: u32) -> *mut SparseObservable {
 ///
 /// Example:
 ///
-///     SparseObservable* obs = obs_zero(100);
+///     SparseObservable *obs = obs_zero(100);
 ///     obs_deallocate(obs);
 ///
 #[no_mangle]
@@ -204,13 +339,10 @@ pub extern "C" fn obs_deallocate(obs: &mut SparseObservable) {
     }
 }
 
-/// Add a term to the observable by copy.
-///
-/// A term is defined by it's bit terms, along with their indices, and the complex coefficient.
+/// @brief Add a term to the observable by copy.
 ///
 /// @param obs A pointer to the observable to which the term is added.
-/// @param bit_terms The bit term vector describing the Paulis in the term.
-/// @param indices The index term vector describing the Paulis indices.
+/// @param paulis The Pauli term vector to add to the observable.
 /// @param coeff The coefficient of the term.
 ///
 /// Example:  
@@ -220,46 +352,40 @@ pub extern "C" fn obs_deallocate(obs: &mut SparseObservable) {
 ///
 ///     complex double coeff = 1;
 ///
-///     BitTermVec *bits = bit_terms_with_capacity(3);
-///     bit_terms_push(bits, BitTerm_X);    
-///     bit_terms_push(bits, BitTerm_Y);
-///     bit_terms_push(bits, BitTerm_Z);
+///     PauliTermVec *paulis = paulis_with_capacity(3);
+///     paulis_push(paulis, BitTerm_X, 0);
+///     paulis_push(paulis, BitTerm_Y, 1);
+///     paulis_push(paulis, BitTerm_Z, 2);
 ///
-///     IndexVec *indices = indices_with_capacity(3);
-///     indices_push(indices, 0);
-///     indices_push(indices, 1);
-///     indices_push(indices, 2);
+///     obs_push_copy(obs, bits, indices, coeff);  // push the term, without consuming the Pauli term
 ///
-///     obs_push_copy(obs, bits, indices, coeff);  // push the term, without consuming them
-///
-///     indices_deallocate(indices);  // manually free the indices
-///     bit_terms_deallocate(bit_terms);  // ... and the bit terms
+///     paulis_deallocate(paulis);  // manually free the Pauli term vector
 ///
 #[no_mangle]
 #[cfg(feature = "cbinding")]
 pub extern "C" fn obs_push_copy(
     obs: &mut SparseObservable,
-    bit_terms: &BitTermVec,
-    indices: &IndexVec,
+    paulis: &PauliTermVec,
     coeff: Complex64,
 ) {
     let term = SparseTerm::new(
         obs.num_qubits(),
         coeff,
-        bit_terms.clone().into_boxed_slice(),
-        indices.clone().into_boxed_slice(),
+        paulis.bit_terms.clone().into_boxed_slice(),
+        paulis.indices.clone().into_boxed_slice(),
     )
     .unwrap();
 
     obs.add_term(term.view()).unwrap();
 }
 
-/// Add a term to the observable and deallocate the memory for the indices and bit terms.
+/// @brief Add a term to the observable and deallocate the memory for the indices and bit terms.
 ///
 /// @param obs A pointer to the observable to which the term is added.
-/// @param bit_terms The bit term vector describing the Paulis in the term.
-/// @param indices The index term vector describing the Paulis indices.
+/// @param paulis The Pauli term vector to add to the observable.
 /// @param coeff The coefficient of the term.
+///
+/// @warning Panics if an index in the Pauli term is greater equal than the number of qubits.
 ///
 /// Example:  
 ///
@@ -268,36 +394,29 @@ pub extern "C" fn obs_push_copy(
 ///
 ///     complex double coeff = 1;
 ///
-///     BitTermVec *bits = bit_terms_with_capacity(3);
-///     bit_terms_push(bits, BitTerm_X);    
-///     bit_terms_push(bits, BitTerm_Y);
-///     bit_terms_push(bits, BitTerm_Z);
+///     PauliTermVec *paulis = paulis_with_capacity(3);
+///     paulis_push(paulis, BitTerm_X, 0);
+///     paulis_push(paulis, BitTerm_Y, 1);
+///     paulis_push(paulis, BitTerm_Z, 2);
 ///
-///     IndexVec *indices = indices_with_capacity(3);
-///     indices_push(indices, 0);
-///     indices_push(indices, 1);
-///     indices_push(indices, 2);
-///
-///     obs_push_consume(obs, bits, indices, coeff);  // bits and indices are deallocated
+///     obs_push_consume(obs, paulis, coeff);  // paulis are deallocated
 ///
 #[no_mangle]
 #[cfg(feature = "cbinding")]
 pub extern "C" fn obs_push_consume(
     obs: &mut SparseObservable,
-    bit_terms: &mut BitTermVec,
-    indices: &mut IndexVec,
+    paulis: &mut PauliTermVec,
     coeff: Complex64,
 ) {
     // we take ownership of the memory and let the variables go out of scope
-    // after this function, consuming the variables ``bit_terms`` and ``indices``
-    let bit_terms = unsafe { Box::from_raw(bit_terms) };
-    let indices = unsafe { Box::from_raw(indices) };
+    // after this function, consuming the ``paulis`` variable
+    let paulis = unsafe { Box::from_raw(paulis) };
 
     let term = SparseTerm::new(
         obs.num_qubits(),
         coeff,
-        bit_terms.into_boxed_slice(),
-        indices.into_boxed_slice(),
+        paulis.bit_terms.into_boxed_slice(),
+        paulis.indices.into_boxed_slice(),
     )
     .unwrap(); // TODO handle error
 
@@ -313,10 +432,10 @@ pub extern "C" fn obs_push_consume(
 ///
 /// Example:
 ///
-///     SparseObservable* obs = obs_identity(100);
-///     SparseTerm* term = obs_term(obs, 0);
+///     SparseObservable *obs = obs_identity(100);
+///     SparseTerm *term = obs_term(obs, 0);
 ///     // out-of-bounds indices will fail
-///     // SparseTerm* will_fail = obs_term(obs, 1);  
+///     // SparseTerm *will_fail = obs_term(obs, 1);  
 ///
 #[no_mangle]
 #[cfg(feature = "cbinding")]
@@ -335,8 +454,8 @@ pub extern "C" fn obs_term(obs: &SparseObservable, index: u64) -> *mut SparseTer
 ///
 /// Example:
 ///     
-///     SparseObservable* obs = obs_identity(100);
-///     SparseObservable* result = obs_multiply(obs, 2);
+///     SparseObservable *obs = obs_identity(100);
+///     SparseObservable *result = obs_multiply(obs, 2);
 #[no_mangle]
 #[cfg(feature = "cbinding")]
 pub extern "C" fn obs_multiply(obs: &SparseObservable, coeff: Complex64) -> *mut SparseObservable {
@@ -353,9 +472,9 @@ pub extern "C" fn obs_multiply(obs: &SparseObservable, coeff: Complex64) -> *mut
 ///
 /// Example:
 ///     
-///     SparseObservable* left = obs_identity(100);
-///     SparseObservable* right = obs_zero(100);
-///     SparseObservable* result = obs_add(left, right);
+///     SparseObservable *left = obs_identity(100);
+///     SparseObservable *right = obs_zero(100);
+///     SparseObservable *result = obs_add(left, right);
 ///
 #[no_mangle]
 #[cfg(feature = "cbinding")]
@@ -376,11 +495,11 @@ pub extern "C" fn obs_add(
 ///
 /// Example:
 ///
-///     SparseObservable* iden = obs_identity(100);
-///     SparseObservable* two = obs_add(iden, iden);
+///     SparseObservable *iden = obs_identity(100);
+///     SparseObservable *two = obs_add(iden, iden);
 ///
 ///     double tol = 1e-6;
-///     SparseObservable* canonical = obs_canonicalize(two);
+///     SparseObservable *canonical = obs_canonicalize(two);
 ///
 #[no_mangle]
 #[cfg(feature = "cbinding")]
@@ -400,8 +519,8 @@ pub extern "C" fn obs_canonicalize(
 ///
 /// Example:
 ///
-///     SparseObservable* original = obs_identity(100);
-///     SparseObservable* copied = obs_copy(original);
+///     SparseObservable *original = obs_identity(100);
+///     SparseObservable *copied = obs_copy(original);
 ///
 #[no_mangle]
 #[cfg(feature = "cbinding")]
@@ -422,8 +541,8 @@ pub extern "C" fn obs_copy(obs: &SparseObservable) -> *mut SparseObservable {
 ///
 /// Example:
 ///
-///     SparseObservable* observable = obs_identity(100);
-///     SparseObservable* other = obs_identity(100);
+///     SparseObservable *observable = obs_identity(100);
+///     SparseObservable *other = obs_identity(100);
 ///     bool are_equal = obs_equal(observable, other);
 ///
 #[no_mangle]
@@ -439,7 +558,7 @@ pub extern "C" fn obs_equal(observable: &SparseObservable, other: &SparseObserva
 ///
 /// Example:
 ///
-///     SparseObservable* obs = obs_identity(100);
+///     SparseObservable *obs = obs_identity(100);
 ///     uint64_t num_terms = obs_num_terms(obs);  // num_terms==1
 ///
 #[no_mangle]
@@ -456,7 +575,7 @@ pub extern "C" fn obs_num_terms(observable: &SparseObservable) -> u64 {
 ///
 /// Example:
 ///
-///     SparseObservable* obs = obs_identity(100);
+///     SparseObservable *obs = obs_identity(100);
 ///     uint32_t num_qubits = obs_num_qubits(obs);  // 100
 ///
 #[no_mangle]
@@ -471,7 +590,7 @@ pub extern "C" fn obs_num_qubits(observable: &SparseObservable) -> u32 {
 ///
 /// Example:
 ///
-///     SparseObservable* obs = obs_identity(100);
+///     SparseObservable *obs = obs_identity(100);
 ///     obs_print(obs);
 ///
 #[no_mangle]
@@ -489,8 +608,8 @@ pub extern "C" fn obs_print(observable: &SparseObservable) {
 ///
 /// Example:
 ///
-///     SparseObservable* obs = obs_identity(100);
-///     SparseTerm* term = obs_term(obs, 0);
+///     SparseObservable *obs = obs_identity(100);
+///     SparseTerm *term = obs_term(obs, 0);
 ///
 ///     obs_deallocate(obs);  // term is still allocated!
 ///     obsterm_deallocate(term);
@@ -509,8 +628,8 @@ pub extern "C" fn obsterm_deallocate(term: &mut SparseTerm) {
 ///
 /// Example:
 ///     
-///     SparseObservable* obs = obs_identity(100);
-///     SparseTerm* term = obs_term(obs, 0);
+///     SparseObservable *obs = obs_identity(100);
+///     SparseTerm *term = obs_term(obs, 0);
 ///     obsterm_print(term);
 ///
 #[no_mangle]
@@ -527,8 +646,8 @@ pub extern "C" fn obsterm_print(term: &SparseTerm) {
 ///
 /// Example:
 ///     
-///     SparseObservable* obs = obs_identity(100);
-///     SparseTerm* term = obs_term(obs, 0);
+///     SparseObservable *obs = obs_identity(100);
+///     SparseTerm *term = obs_term(obs, 0);
 ///     complex double coeff = obsterm_coeff(term);
 ///
 #[no_mangle]
@@ -545,8 +664,8 @@ pub extern "C" fn obsterm_coeff(term: &SparseTerm) -> Complex64 {
 ///
 /// Example:
 ///     
-///     SparseObservable* obs = obs_identity(100);
-///     SparseTerm* term = obs_term(obs, 0);
+///     SparseObservable *obs = obs_identity(100);
+///     SparseTerm *term = obs_term(obs, 0);
 ///     uint32_t num_qubits = obsterm_num_qubits(term);
 ///
 #[no_mangle]
@@ -563,8 +682,8 @@ pub extern "C" fn obsterm_num_qubits(term: &SparseTerm) -> u32 {
 ///
 /// Example:
 ///     
-///     SparseObservable* obs = obs_identity(100);
-///     SparseTerm* term = obs_term(obs, 0);
+///     SparseObservable *obs = obs_identity(100);
+///     SparseTerm *term = obs_term(obs, 0);
 ///     uint32_t nni = obsterm_nni(term);
 ///
 #[no_mangle]
@@ -572,13 +691,6 @@ pub extern "C" fn obsterm_num_qubits(term: &SparseTerm) -> u32 {
 pub extern "C" fn obsterm_nni(term: &SparseTerm) -> u32 {
     // the length can be at most equal to the number of qubits, thus u32 is enough
     term.indices().len() as u32
-}
-
-/// A struct representing a (Pauli, qubit index) tuple.
-#[repr(C)]
-pub struct PauliTerm {
-    bit_term: BitTerm,
-    index: u32,
 }
 
 /// Get the (Pauli, qubit index) tuple inside term.
@@ -590,8 +702,8 @@ pub struct PauliTerm {
 ///
 /// Example:
 ///     
-///     SparseObservable* obs = obs_identity(100);
-///     SparseTerm* term = obs_term(obs, 0);
+///     SparseObservable *obs = obs_identity(100);
+///     SparseTerm *term = obs_term(obs, 0);
 ///     uint32_t nni = obsterm_nni(term);
 ///
 #[no_mangle]
