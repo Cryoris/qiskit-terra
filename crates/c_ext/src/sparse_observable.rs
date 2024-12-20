@@ -13,26 +13,6 @@
 use num_complex::Complex64;
 use qiskit_accelerate::sparse_observable::{BitTerm, SparseObservable, SparseTerm};
 
-/// @ingroup IndexVec
-/// A vector of indices as ``uint_32t``.
-#[derive(Debug, Clone)]
-pub struct IndexVec {
-    // We use a struct instead of a typedef (type IndexVec = Vec<u32>) to avoid
-    // cbindgen to introduce a redundant Vec_u32 type. This could maybe be changed in
-    // future.
-    values: Vec<u32>,
-}
-
-/// @ingroup BitTermVec
-/// A vector of ``BitTerm`` enum values.
-#[derive(Debug, Clone)]
-pub struct BitTermVec {
-    // We use a struct instead of a typedef (type IndexVec = Vec<u32>) to avoid
-    // cbindgen to introduce a redundant Vec_u32 type. This could maybe be changed in
-    // future.
-    values: Vec<BitTerm>,
-}
-
 /// @ingroup PauliTermVec
 /// A Pauli term vector, containing ``(index, bit_term)`` tuples.
 #[derive(Debug, Clone)]
@@ -67,160 +47,14 @@ pub struct PauliTerm {
 ///     PauliTerm *pauli = obsterm_pauli(term, 0);  // get the 0th Pauli in the Pauli term
 ///     printf("Bit term: %i, Index: %i", pauli->bit_term, pauli->index);
 ///
-///     pauli_deallocate(pauli);  // deallocate the struct
+///     pauli_free(pauli);  // deallocate the struct
 ///
 #[no_mangle]
 #[cfg(feature = "cbinding")]
-pub extern "C" fn pauli_deallocate(pauli: &mut PauliTerm) {
+pub extern "C" fn pauli_free(pauli: &mut PauliTerm) {
     unsafe {
         let _ = Box::from_raw(pauli);
     }
-}
-
-/// @ingroup IndexVec
-/// Create a new index vector of ``uint32_t``\ s.
-///
-/// @return A pointer to an empty index vector.
-///
-/// Example:
-///
-///     IndexVec *indices = indices_new();
-///
-#[no_mangle]
-#[cfg(feature = "cbinding")]
-pub extern "C" fn indices_new() -> *mut IndexVec {
-    let indices = IndexVec { values: Vec::new() };
-    Box::into_raw(Box::new(indices))
-}
-
-/// @ingroup IndexVec
-/// Create a new index vector of ``uint32_t``\ s, with a given capacity.
-///
-/// @param capacity The capacity to allocate for the vector.
-///
-/// @return A pointer to an empty index vector.
-///
-/// Example:
-///
-///     uint64_t capacity = 10;
-///     IndexVec *indices = indices_with_capacity(capacity);
-///
-#[no_mangle]
-#[cfg(feature = "cbinding")]
-pub extern "C" fn indices_with_capacity(capacity: u64) -> *mut IndexVec {
-    let indices = IndexVec {
-        values: Vec::with_capacity(capacity as usize),
-    };
-    Box::into_raw(Box::new(indices))
-}
-
-/// @ingroup IndexVec
-/// Free the index vector.
-///
-/// @param indices A pointer to the index vector to be freed.
-///
-/// Example:
-///
-///     IndexVec *indices = indices_with_capacity(1);
-///     indices_push(indices, 42);
-///     indices_deallocate(indices);
-///
-#[no_mangle]
-#[cfg(feature = "cbinding")]
-pub extern "C" fn indices_deallocate(indices: &mut IndexVec) {
-    unsafe {
-        let _ = Box::from_raw(indices);
-    }
-}
-
-/// @ingroup IndexVec
-/// Push a new index onto the index vector.
-///
-/// @param indices A pointer to the index vector.
-/// @param value The index to add.
-///
-/// Example:
-///
-///     IndexVec *indices = indices_new();
-///     indices_push(indices, 2);  // push the index 2 onto the vector
-///
-#[no_mangle]
-#[cfg(feature = "cbinding")]
-pub extern "C" fn indices_push(indices: &mut IndexVec, value: u32) {
-    indices.values.push(value)
-}
-
-/// @ingroup BitTermVec
-/// Create a new vector of ``BitTerm``\ s.
-///
-/// @return A pointer to an empty bit term vector.
-///
-/// Example:
-///
-///     BitTermVec *bit_terms = bit_terms_new();
-///
-#[no_mangle]
-#[cfg(feature = "cbinding")]
-pub extern "C" fn bit_terms_new() -> *mut BitTermVec {
-    let bit_terms = BitTermVec { values: Vec::new() };
-    Box::into_raw(Box::new(bit_terms))
-}
-
-/// @ingroup BitTermVec
-/// Create a new bit term vector of ``BitTerm``\ s, with a given capacity.
-///
-/// @param capacity The capacity to allocate for the vector.
-///
-/// @return A pointer to an empty bit term vector.
-///
-/// Example:
-///
-///     uint64_t capacity = 10;
-///     BitTermVec *bit_terms = bit_terms_with_capacity(capacity);
-///
-#[no_mangle]
-#[cfg(feature = "cbinding")]
-pub extern "C" fn bit_terms_with_capacity(capacity: u64) -> *mut BitTermVec {
-    let bit_terms = BitTermVec {
-        values: Vec::with_capacity(capacity as usize),
-    };
-    Box::into_raw(Box::new(bit_terms))
-}
-
-/// @ingroup BitTermVec
-/// Free the bit term vector.
-///
-/// @param bit_terms A pointer to the bit term vector to be freed.
-///
-/// Example:
-///
-///     BitTermVec *bit_terms = bit_terms_new();
-///     bit_terms_push(bit_terms, BitTerm_X);  // push an X onto the vector
-///     bit_terms_deallocate(bit_terms);
-///
-#[no_mangle]
-#[cfg(feature = "cbinding")]
-pub extern "C" fn bit_terms_deallocate(bit_terms: &mut BitTermVec) {
-    unsafe {
-        let _ = Box::from_raw(bit_terms);
-    }
-}
-
-/// @ingroup BitTermVec
-/// Push a new bit term onto the bit term vector.
-///
-/// @param bit_terms A pointer to the bit term vector.
-/// @param value The bit term to add.
-///
-/// Example:
-///
-///     BitTermVec *bit_terms = bit_terms_new();
-///     bit_terms_push(bit_terms, BitTerm_X);  // push an X onto the vector
-///
-#[no_mangle]
-#[cfg(feature = "cbinding")]
-pub extern "C" fn bit_terms_push(bit_terms: &mut BitTermVec, value: BitTerm) {
-    bit_terms.values.push(value)
 }
 
 /// @ingroup PauliTermVec
@@ -273,11 +107,11 @@ pub extern "C" fn paulis_with_capacity(capacity: u64) -> *mut PauliTermVec {
 ///
 ///     PauliTermVec *paulis = paulis_new();
 ///     paulis_push(paulis, BitTerm_Z, 2);
-///     paulis_deallocate(paulis);
+///     paulis_free(paulis);
 ///
 #[no_mangle]
 #[cfg(feature = "cbinding")]
-pub extern "C" fn paulis_deallocate(paulis: &mut PauliTermVec) {
+pub extern "C" fn paulis_free(paulis: &mut PauliTermVec) {
     unsafe {
         let _ = Box::from_raw(paulis);
     }
@@ -349,11 +183,11 @@ pub extern "C" fn obs_identity(num_qubits: u32) -> *mut SparseObservable {
 /// Example:
 ///
 ///     SparseObservable *obs = obs_zero(100);
-///     obs_deallocate(obs);
+///     obs_free(obs);
 ///
 #[no_mangle]
 #[cfg(feature = "cbinding")]
-pub extern "C" fn obs_deallocate(obs: &mut SparseObservable) {
+pub extern "C" fn obs_free(obs: &mut SparseObservable) {
     unsafe {
         let _ = Box::from_raw(obs);
     }
@@ -380,7 +214,7 @@ pub extern "C" fn obs_deallocate(obs: &mut SparseObservable) {
 ///
 ///     obs_push_copy(obs, bits, indices, coeff);  // push the term, without consuming the Pauli term
 ///
-///     paulis_deallocate(paulis);  // manually free the Pauli term vector
+///     paulis_free(paulis);  // manually free the Pauli term vector
 ///
 #[no_mangle]
 #[cfg(feature = "cbinding")]
@@ -644,12 +478,12 @@ pub extern "C" fn obs_print(observable: &SparseObservable) {
 ///     SparseObservable *obs = obs_identity(100);
 ///     SparseTerm *term = obs_term(obs, 0);
 ///
-///     obs_deallocate(obs);  // term is still allocated!
-///     obsterm_deallocate(term);
+///     obs_free(obs);  // term is still allocated!
+///     obsterm_free(term);
 ///
 #[no_mangle]
 #[cfg(feature = "cbinding")]
-pub extern "C" fn obsterm_deallocate(term: &mut SparseTerm) {
+pub extern "C" fn obsterm_free(term: &mut SparseTerm) {
     unsafe {
         let _ = Box::from_raw(term);
     }

@@ -82,6 +82,10 @@ coverage_erase:
 
 clean: coverage_erase ;
 
+# Run clang-format
+cformat:
+	sh tools/run_clang_format.sh
+
 # Build C API crate and header
 cbuild:
 	cargo build --release --no-default-features --features cbinding
