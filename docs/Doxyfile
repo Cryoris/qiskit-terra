@@ -1,4 +1,4 @@
-INPUT = qiskit.h
+INPUT = docs/cdoc/header.h qiskit.h
 
 EXTRACT_ALL = YES
 

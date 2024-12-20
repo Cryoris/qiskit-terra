@@ -16,11 +16,6 @@ use qiskit_accelerate::sparse_observable::{BitTerm, SparseObservable, SparseTerm
 type IndexVec = Vec<u32>;
 type BitTermVec = Vec<BitTerm>;
 
-/// @defgroup SparseObservable SparseObservable
-/// This is a group of functions for interacting with an opaque (Rust-space) SparseObservable
-/// instance.
-type CSparseObservable = SparseObservable;
-
 /// Create a new index vector of ``uint32_t``\ s.
 ///
 /// @return A pointer to an empty index vector.
