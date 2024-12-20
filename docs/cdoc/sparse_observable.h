@@ -17,11 +17,3 @@
 /**
  * @defgroup PauliTermVec PauliTermVec
  */
-
-/**
- * @defgroup BitTermVec BitTermVec
- */
-
-/**
- * @defgroup IndexVec IndexVec
- */
