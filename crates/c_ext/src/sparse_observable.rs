@@ -614,6 +614,7 @@ pub extern "C" fn obs_print(observable: &SparseObservable) {
     println!("{:?}", observable);
 }
 
+/// @ingroup SparseTerm
 /// Deallocate the term.
 ///
 /// The term is **not** automatically deallocated if the observable it
@@ -637,6 +638,7 @@ pub extern "C" fn obsterm_deallocate(term: &mut SparseTerm) {
     }
 }
 
+/// @ingroup SparseTerm
 /// Print a sparse term.
 ///
 /// @param term A pointer to the ``SparseTerm`` to print.
@@ -653,6 +655,7 @@ pub extern "C" fn obsterm_print(term: &SparseTerm) {
     println!("{:?}", term);
 }
 
+/// @ingroup SparseTerm
 /// Get the coefficient of a sparse term.
 ///
 /// @param term A pointer to the ``SparseTerm`` whose coefficient is returned.
@@ -671,6 +674,7 @@ pub extern "C" fn obsterm_coeff(term: &SparseTerm) -> Complex64 {
     term.coeff()
 }
 
+/// @ingroup SparseTerm
 /// Get the number of qubits the sparse term is defined on.
 ///
 /// @param term A pointer to the ``SparseTerm`` whose number of qubits is returned.
@@ -689,6 +693,7 @@ pub extern "C" fn obsterm_num_qubits(term: &SparseTerm) -> u32 {
     term.num_qubits()
 }
 
+/// @ingroup SparseTerm
 /// Get the number of non-identity (nni) Paulis in the sparse term.
 ///
 /// @param term A pointer to the ``SparseTerm``.
@@ -708,6 +713,7 @@ pub extern "C" fn obsterm_nni(term: &SparseTerm) -> u32 {
     term.indices().len() as u32
 }
 
+/// @ingroup SparseTerm
 /// Get the (Pauli, qubit index) tuple inside term.
 ///
 /// @param term A pointer to the ``SparseTerm``.
