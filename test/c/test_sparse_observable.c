@@ -1,10 +1,9 @@
-#include <stdio.h>
-#include <complex.h>
 #include "common.h"
 #include "qiskit.h"
+#include <complex.h>
+#include <stdio.h>
 
-int test_zero()
-{
+int test_zero() {
     SparseObservable *obs = obs_zero(100);
     obs_print(obs);
     // TODO: actually perform some equality check (requires obs_term)
@@ -12,8 +11,7 @@ int test_zero()
     return 0;
 }
 
-int test_identity()
-{
+int test_identity() {
     SparseObservable *obs = obs_identity(100);
     obs_print(obs);
     // TODO: actually perform some equality check (requires obs_term)
@@ -21,8 +19,7 @@ int test_identity()
     return 0;
 }
 
-int test_copy()
-{
+int test_copy() {
     SparseObservable *obs = obs_identity(100);
     SparseObservable *copied = obs_copy(obs);
     obs_print(copied);
@@ -32,8 +29,7 @@ int test_copy()
     return 0;
 }
 
-int test_add()
-{
+int test_add() {
     SparseObservable *left = obs_identity(100);
     SparseObservable *right = obs_identity(100);
     SparseObservable *obs = obs_add(left, right);
@@ -48,8 +44,7 @@ int test_add()
     return 0;
 }
 
-int test_mult_real()
-{
+int test_mult_real() {
     SparseObservable *obs = obs_identity(100);
 
     double coeff = 2;
@@ -64,8 +59,7 @@ int test_mult_real()
     return 0;
 }
 
-int test_mult_complex()
-{
+int test_mult_complex() {
     SparseObservable *obs = obs_identity(100);
 
     complex double coeff = 2 + 2 * I;
@@ -80,8 +74,7 @@ int test_mult_complex()
     return 0;
 }
 
-int test_canonicalize()
-{
+int test_canonicalize() {
     SparseObservable *left = obs_identity(100);
     SparseObservable *right = obs_identity(100);
     SparseObservable *obs = obs_add(left, right);
@@ -100,23 +93,20 @@ int test_canonicalize()
     return 0;
 }
 
-int test_num_terms()
-{
+int test_num_terms() {
     int result = Ok;
     uint64_t num_terms;
 
     SparseObservable *zero = obs_zero(100);
     num_terms = obs_num_terms(zero);
-    if (num_terms != 0)
-    {
+    if (num_terms != 0) {
         result = EqualityError;
     }
     obs_deallocate(zero);
 
     SparseObservable *iden = obs_identity(100);
     num_terms = obs_num_terms(iden);
-    if (num_terms != 1)
-    {
+    if (num_terms != 1) {
         result = EqualityError;
     }
     obs_deallocate(iden);
@@ -124,23 +114,20 @@ int test_num_terms()
     return result;
 }
 
-int test_num_qubits()
-{
+int test_num_qubits() {
     int result = Ok;
     uint32_t num_qubits;
 
     SparseObservable *obs = obs_zero(1);
     num_qubits = obs_num_qubits(obs);
-    if (num_qubits != 1)
-    {
+    if (num_qubits != 1) {
         result = EqualityError;
     }
     obs_deallocate(obs);
 
     SparseObservable *obs100 = obs_zero(100);
     num_qubits = obs_num_qubits(obs100);
-    if (num_qubits != 100)
-    {
+    if (num_qubits != 100) {
         result = EqualityError;
     }
     obs_deallocate(obs100);
@@ -148,8 +135,7 @@ int test_num_qubits()
     return result;
 }
 
-int test_sparse_observable()
-{
+int test_sparse_observable() {
     int num_failed = 0;
 
     num_failed += RUN_TEST(test_zero);
