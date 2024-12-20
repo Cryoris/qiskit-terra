@@ -12,7 +12,7 @@
 
 OS := $(shell uname -s)
 
-.PHONY: default ruff env lint lint-incr style black test test_randomized pytest pytest_randomized test_ci coverage coverage_erase clean
+.PHONY: default ruff env lint lint-incr style black test test_randomized pytest pytest_randomized test_ci coverage coverage_erase clean cbuild ctest
 
 default: ruff style lint-incr test ;
 
@@ -82,18 +82,16 @@ coverage_erase:
 
 clean: coverage_erase ;
 
-test/c/qiskit.h:
+# Build C API crate and header
+cbuild:
 	cargo build --release --no-default-features --features cbinding
 	cbindgen --crate qiskit-c-ext --output test/c/qiskit.h --lang C
 
-test/c/build:
+# Use ctest to run C API tests
+ctest: cbuild
 	# -S specifically specifies the source path to be the current folder
 	# -B specifically specifies the build path to be inside test/c/build
 	cmake -S. -Btest/c/build
-
-test/c/build/test/c/test_driver.c: test/c/build
 	cmake --build test/c/build
-
-ctest: test/c/qiskit.h test/c/build/test/c/test_driver.c
 	# -V ensures we always produce a logging output to indicate the subtests
 	ctest -V --test-dir test/c/build
