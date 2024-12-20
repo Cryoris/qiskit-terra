@@ -5,7 +5,7 @@
 
 int test_zero()
 {
-    CSparseObservable *obs = obs_zero(100);
+    SparseObservable *obs = obs_zero(100);
     uint64_t num_terms = obs_num_terms(obs);
     uint32_t num_qubits = obs_num_qubits(obs);
     obs_deallocate(obs);
@@ -19,7 +19,7 @@ int test_zero()
 
 int test_identity()
 {
-    CSparseObservable *obs = obs_identity(100);
+    SparseObservable *obs = obs_identity(100);
     uint64_t num_terms = obs_num_terms(obs);
     uint32_t num_qubits = obs_num_qubits(obs);
     obs_deallocate(obs);
@@ -33,8 +33,8 @@ int test_identity()
 
 int test_copy()
 {
-    CSparseObservable *obs = obs_identity(100);
-    CSparseObservable *copied = obs_copy(obs);
+    SparseObservable *obs = obs_identity(100);
+    SparseObservable *copied = obs_copy(obs);
 
     bool are_equal = obs_equal(obs, copied);
 
@@ -51,9 +51,9 @@ int test_copy()
 
 int test_add()
 {
-    CSparseObservable *left = obs_identity(100);
-    CSparseObservable *right = obs_identity(100);
-    CSparseObservable *obs = obs_add(left, right);
+    SparseObservable *left = obs_identity(100);
+    SparseObservable *right = obs_identity(100);
+    SparseObservable *obs = obs_add(left, right);
 
     uint64_t num_terms = obs_num_terms(obs);
 
@@ -71,10 +71,10 @@ int test_add()
 
 int test_mult_real()
 {
-    CSparseObservable *obs = obs_identity(100);
+    SparseObservable *obs = obs_identity(100);
 
     double coeff = 2;
-    CSparseObservable *result = obs_multiply(obs, coeff);
+    SparseObservable *result = obs_multiply(obs, coeff);
 
     obs_print(result);
     // TODO: actually perform some equality check (requires obs_term)
@@ -87,10 +87,10 @@ int test_mult_real()
 
 int test_mult_complex()
 {
-    CSparseObservable *obs = obs_identity(100);
+    SparseObservable *obs = obs_identity(100);
 
     complex double coeff = 2 + 2 * I;
-    CSparseObservable *result = obs_multiply(obs, coeff);
+    SparseObservable *result = obs_multiply(obs, coeff);
 
     obs_print(result);
     // TODO: actually perform some equality check (requires obs_term)
@@ -103,12 +103,12 @@ int test_mult_complex()
 
 int test_canonicalize()
 {
-    CSparseObservable *left = obs_identity(100);
-    CSparseObservable *right = obs_identity(100);
-    CSparseObservable *obs = obs_add(left, right);
+    SparseObservable *left = obs_identity(100);
+    SparseObservable *right = obs_identity(100);
+    SparseObservable *obs = obs_add(left, right);
 
     double tol = 1e-5;
-    CSparseObservable *simplified = obs_canonicalize(obs, tol);
+    SparseObservable *simplified = obs_canonicalize(obs, tol);
 
     obs_print(simplified);
     // TODO: actually perform some equality check (requires obs_term)
@@ -126,7 +126,7 @@ int test_num_terms()
     int result = Ok;
     uint64_t num_terms;
 
-    CSparseObservable *zero = obs_zero(100);
+    SparseObservable *zero = obs_zero(100);
     num_terms = obs_num_terms(zero);
     if (num_terms != 0)
     {
@@ -134,7 +134,7 @@ int test_num_terms()
     }
     obs_deallocate(zero);
 
-    CSparseObservable *iden = obs_identity(100);
+    SparseObservable *iden = obs_identity(100);
     num_terms = obs_num_terms(iden);
     if (num_terms != 1)
     {
@@ -150,7 +150,7 @@ int test_num_qubits()
     int result = Ok;
     uint32_t num_qubits;
 
-    CSparseObservable *obs = obs_zero(1);
+    SparseObservable *obs = obs_zero(1);
     num_qubits = obs_num_qubits(obs);
     if (num_qubits != 1)
     {
@@ -158,7 +158,7 @@ int test_num_qubits()
     }
     obs_deallocate(obs);
 
-    CSparseObservable *obs100 = obs_zero(100);
+    SparseObservable *obs100 = obs_zero(100);
     num_qubits = obs_num_qubits(obs100);
     if (num_qubits != 100)
     {
@@ -172,7 +172,7 @@ int test_num_qubits()
 int test_custom_build()
 {
     u_int32_t num_qubits = 100;
-    CSparseObservable *obs = obs_zero(num_qubits);
+    SparseObservable *obs = obs_zero(num_qubits);
 
     complex double coeff = 1;
 
@@ -192,7 +192,7 @@ int test_custom_build()
     obs_print(obs); // TODO do some check
 
     double tol = 1e-6;
-    CSparseObservable *simplified = obs_canonicalize(obs, tol);
+    SparseObservable *simplified = obs_canonicalize(obs, tol);
     obs_print(simplified); // TODO do some check
 
     obs_deallocate(obs);
@@ -202,7 +202,7 @@ int test_custom_build()
 
 int test_term()
 {
-    CSparseObservable *obs = obs_identity(100);
+    SparseObservable *obs = obs_identity(100);
 
     BitTermVec *bits = bit_terms_with_capacity(3);
     bit_terms_push(bits, BitTerm_X);

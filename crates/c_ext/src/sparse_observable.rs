@@ -19,9 +19,6 @@ type BitTermVec = Vec<BitTerm>;
 /// @defgroup SparseObservable SparseObservable
 /// This is a group of functions for interacting with an opaque (Rust-space) SparseObservable
 /// instance.
-///
-/// @ingroup SparseObservable
-/// @brief The CSparseObservable is an opaque pointer to the Rust-space SparseObservable.
 type CSparseObservable = SparseObservable;
 
 /// Create a new index vector of ``uint32_t``\ s.
@@ -167,12 +164,12 @@ pub extern "C" fn bit_terms_push(bit_terms: &mut BitTermVec, value: BitTerm) {
 ///
 /// Example:
 ///
-///     CSparseObservable* zero = obs_zero(100);
+///     SparseObservable* zero = obs_zero(100);
 ///
 #[no_mangle]
 #[cfg(feature = "cbinding")]
-pub extern "C" fn obs_zero(num_qubits: u32) -> *mut CSparseObservable {
-    let obs = CSparseObservable::zero(num_qubits);
+pub extern "C" fn obs_zero(num_qubits: u32) -> *mut SparseObservable {
+    let obs = SparseObservable::zero(num_qubits);
     Box::into_raw(Box::new(obs))
 }
 
@@ -185,12 +182,12 @@ pub extern "C" fn obs_zero(num_qubits: u32) -> *mut CSparseObservable {
 ///
 /// Example:
 ///
-///     CCSparseObservable* identity = obs_identity(100);
+///     SparseObservable* identity = obs_identity(100);
 ///
 #[no_mangle]
 #[cfg(feature = "cbinding")]
-pub extern "C" fn obs_identity(num_qubits: u32) -> *mut CSparseObservable {
-    let obs = CSparseObservable::identity(num_qubits);
+pub extern "C" fn obs_identity(num_qubits: u32) -> *mut SparseObservable {
+    let obs = SparseObservable::identity(num_qubits);
     Box::into_raw(Box::new(obs))
 }
 
@@ -204,12 +201,12 @@ pub extern "C" fn obs_identity(num_qubits: u32) -> *mut CSparseObservable {
 ///
 /// Example:
 ///
-///     CSparseObservable* obs = obs_zero(100);
+///     SparseObservable* obs = obs_zero(100);
 ///     obs_deallocate(obs);
 ///
 #[no_mangle]
 #[cfg(feature = "cbinding")]
-pub extern "C" fn obs_deallocate(obs: &mut CSparseObservable) {
+pub extern "C" fn obs_deallocate(obs: &mut SparseObservable) {
     unsafe {
         let _ = Box::from_raw(obs);
     }
@@ -228,7 +225,7 @@ pub extern "C" fn obs_deallocate(obs: &mut CSparseObservable) {
 /// Example:
 ///
 ///     u_int32_t num_qubits = 100;
-///     CSparseObservable *obs = obs_zero(num_qubits);
+///     SparseObservable *obs = obs_zero(num_qubits);
 ///
 ///     complex double coeff = 1;
 ///
@@ -250,7 +247,7 @@ pub extern "C" fn obs_deallocate(obs: &mut CSparseObservable) {
 #[no_mangle]
 #[cfg(feature = "cbinding")]
 pub extern "C" fn obs_push_copy(
-    obs: &mut CSparseObservable,
+    obs: &mut SparseObservable,
     bit_terms: &BitTermVec,
     indices: &IndexVec,
     coeff: Complex64,
@@ -277,7 +274,7 @@ pub extern "C" fn obs_push_copy(
 /// Example:
 ///
 ///     u_int32_t num_qubits = 100;
-///     CSparseObservable *obs = obs_zero(num_qubits);
+///     SparseObservable *obs = obs_zero(num_qubits);
 ///
 ///     complex double coeff = 1;
 ///
@@ -296,7 +293,7 @@ pub extern "C" fn obs_push_copy(
 #[no_mangle]
 #[cfg(feature = "cbinding")]
 pub extern "C" fn obs_push_consume(
-    obs: &mut CSparseObservable,
+    obs: &mut SparseObservable,
     bit_terms: &mut BitTermVec,
     indices: &mut IndexVec,
     coeff: Complex64,
@@ -327,14 +324,14 @@ pub extern "C" fn obs_push_consume(
 ///
 /// Example:
 ///
-///     CSparseObservable* obs = obs_identity(100);
+///     SparseObservable* obs = obs_identity(100);
 ///     SparseTerm* term = obs_term(obs, 0);
 ///     // out-of-bounds indices will fail
 ///     // SparseTerm* will_fail = obs_term(obs, 1);
 ///
 #[no_mangle]
 #[cfg(feature = "cbinding")]
-pub extern "C" fn obs_term(obs: &CSparseObservable, index: u64) -> *mut SparseTerm {
+pub extern "C" fn obs_term(obs: &SparseObservable, index: u64) -> *mut SparseTerm {
     // We could also add a read-only view on the SparseTermView,
     // whose lifetime would implicitly be bound to the observable.
     // For now, we'll only provide a copy, as the Python interface does.
@@ -350,11 +347,11 @@ pub extern "C" fn obs_term(obs: &CSparseObservable, index: u64) -> *mut SparseTe
 ///
 /// Example:
 ///
-///     CSparseObservable* obs = obs_identity(100);
-///     CSparseObservable* result = obs_multiply(obs, 2);
+///     SparseObservable* obs = obs_identity(100);
+///     SparseObservable* result = obs_multiply(obs, 2);
 #[no_mangle]
 #[cfg(feature = "cbinding")]
-pub extern "C" fn obs_multiply(obs: &CSparseObservable, coeff: Complex64) -> *mut CSparseObservable {
+pub extern "C" fn obs_multiply(obs: &SparseObservable, coeff: Complex64) -> *mut SparseObservable {
     let result = obs * coeff;
     Box::into_raw(Box::new(result))
 }
@@ -369,16 +366,16 @@ pub extern "C" fn obs_multiply(obs: &CSparseObservable, coeff: Complex64) -> *mu
 ///
 /// Example:
 ///
-///     CSparseObservable* left = obs_identity(100);
-///     CSparseObservable* right = obs_zero(100);
-///     CSparseObservable* result = obs_add(left, right);
+///     SparseObservable* left = obs_identity(100);
+///     SparseObservable* right = obs_zero(100);
+///     SparseObservable* result = obs_add(left, right);
 ///
 #[no_mangle]
 #[cfg(feature = "cbinding")]
 pub extern "C" fn obs_add(
-    left: &CSparseObservable,
-    right: &CSparseObservable,
-) -> *mut CSparseObservable {
+    left: &SparseObservable,
+    right: &SparseObservable,
+) -> *mut SparseObservable {
     let result = left + right;
     Box::into_raw(Box::new(result))
 }
@@ -393,18 +390,18 @@ pub extern "C" fn obs_add(
 ///
 /// Example:
 ///
-///     CSparseObservable* iden = obs_identity(100);
-///     CSparseObservable* two = obs_add(iden, iden);
+///     SparseObservable* iden = obs_identity(100);
+///     SparseObservable* two = obs_add(iden, iden);
 ///
 ///     double tol = 1e-6;
-///     CSparseObservable* canonical = obs_canonicalize(two);
+///     SparseObservable* canonical = obs_canonicalize(two);
 ///
 #[no_mangle]
 #[cfg(feature = "cbinding")]
 pub extern "C" fn obs_canonicalize(
-    obs: &CSparseObservable,
+    obs: &SparseObservable,
     tol: f64, // no optional arguments in C -- welcome to the ancient past
-) -> *mut CSparseObservable {
+) -> *mut SparseObservable {
     let result = obs.canonicalize(tol);
     Box::into_raw(Box::new(result))
 }
@@ -418,12 +415,12 @@ pub extern "C" fn obs_canonicalize(
 ///
 /// Example:
 ///
-///     CSparseObservable* original = obs_identity(100);
-///     CSparseObservable* copied = obs_copy(original);
+///     SparseObservable* original = obs_identity(100);
+///     SparseObservable* copied = obs_copy(original);
 ///
 #[no_mangle]
 #[cfg(feature = "cbinding")]
-pub extern "C" fn obs_copy(obs: &CSparseObservable) -> *mut CSparseObservable {
+pub extern "C" fn obs_copy(obs: &SparseObservable) -> *mut SparseObservable {
     let copied = obs.clone();
     Box::into_raw(Box::new(copied))
 }
@@ -441,13 +438,13 @@ pub extern "C" fn obs_copy(obs: &CSparseObservable) -> *mut CSparseObservable {
 ///
 /// Example:
 ///
-///     CSparseObservable* observable = obs_identity(100);
-///     CSparseObservable* other = obs_identity(100);
+///     SparseObservable* observable = obs_identity(100);
+///     SparseObservable* other = obs_identity(100);
 ///     bool are_equal = obs_equal(observable, other);
 ///
 #[no_mangle]
 #[cfg(feature = "cbinding")]
-pub extern "C" fn obs_equal(observable: &CSparseObservable, other: &CSparseObservable) -> bool {
+pub extern "C" fn obs_equal(observable: &SparseObservable, other: &SparseObservable) -> bool {
     observable.eq(other)
 }
 /// Get the number of terms in the observable.
@@ -458,12 +455,12 @@ pub extern "C" fn obs_equal(observable: &CSparseObservable, other: &CSparseObser
 ///
 /// Example:
 ///
-///     CSparseObservable* obs = obs_identity(100);
+///     SparseObservable* obs = obs_identity(100);
 ///     uint64_t num_terms = obs_num_terms(obs);  // num_terms==1
 ///
 #[no_mangle]
 #[cfg(feature = "cbinding")]
-pub extern "C" fn obs_num_terms(observable: &CSparseObservable) -> u64 {
+pub extern "C" fn obs_num_terms(observable: &SparseObservable) -> u64 {
     observable.num_terms() as u64
 }
 
@@ -475,27 +472,27 @@ pub extern "C" fn obs_num_terms(observable: &CSparseObservable) -> u64 {
 ///
 /// Example:
 ///
-///     CSparseObservable* obs = obs_identity(100);
+///     SparseObservable* obs = obs_identity(100);
 ///     uint32_t num_qubits = obs_num_qubits(obs);  // 100
 ///
 #[no_mangle]
 #[cfg(feature = "cbinding")]
-pub extern "C" fn obs_num_qubits(observable: &CSparseObservable) -> u32 {
+pub extern "C" fn obs_num_qubits(observable: &SparseObservable) -> u32 {
     observable.num_qubits()
 }
 
 /// Print the observable.
 ///
-/// @param term A pointer to the ``CSparseObservable`` to print.
+/// @param term A pointer to the ``SparseObservable`` to print.
 ///
 /// Example:
 ///
-///     CSparseObservable* obs = obs_identity(100);
+///     SparseObservable* obs = obs_identity(100);
 ///     obs_print(obs);
 ///
 #[no_mangle]
 #[cfg(feature = "cbinding")]
-pub extern "C" fn obs_print(observable: &CSparseObservable) {
+pub extern "C" fn obs_print(observable: &SparseObservable) {
     println!("{:?}", observable);
 }
 
@@ -508,7 +505,7 @@ pub extern "C" fn obs_print(observable: &CSparseObservable) {
 ///
 /// Example:
 ///
-///     CSparseObservable* obs = obs_identity(100);
+///     SparseObservable* obs = obs_identity(100);
 ///     SparseTerm* term = obs_term(obs, 0);
 ///
 ///     obs_deallocate(obs);  // term is still allocated!
@@ -528,7 +525,7 @@ pub extern "C" fn obsterm_deallocate(term: &mut SparseTerm) {
 ///
 /// Example:
 ///
-///     CSparseObservable* obs = obs_identity(100);
+///     SparseObservable* obs = obs_identity(100);
 ///     SparseTerm* term = obs_term(obs, 0);
 ///     obsterm_print(term);
 ///
@@ -546,7 +543,7 @@ pub extern "C" fn obsterm_print(term: &SparseTerm) {
 ///
 /// Example:
 ///
-///     CSparseObservable* obs = obs_identity(100);
+///     SparseObservable* obs = obs_identity(100);
 ///     SparseTerm* term = obs_term(obs, 0);
 ///     complex double coeff = obsterm_coeff(term);
 ///
@@ -564,7 +561,7 @@ pub extern "C" fn obsterm_coeff(term: &SparseTerm) -> Complex64 {
 ///
 /// Example:
 ///
-///     CSparseObservable* obs = obs_identity(100);
+///     SparseObservable* obs = obs_identity(100);
 ///     SparseTerm* term = obs_term(obs, 0);
 ///     uint32_t num_qubits = obsterm_num_qubits(term);
 ///
@@ -582,7 +579,7 @@ pub extern "C" fn obsterm_num_qubits(term: &SparseTerm) -> u32 {
 ///
 /// Example:
 ///
-///     CSparseObservable* obs = obs_identity(100);
+///     SparseObservable* obs = obs_identity(100);
 ///     SparseTerm* term = obs_term(obs, 0);
 ///     uint32_t nni = obsterm_nni(term);
 ///
@@ -609,7 +606,7 @@ pub struct PauliTerm {
 ///
 /// Example:
 ///
-///     CSparseObservable* obs = obs_identity(100);
+///     SparseObservable* obs = obs_identity(100);
 ///     SparseTerm* term = obs_term(obs, 0);
 ///     uint32_t nni = obsterm_nni(term);
 ///

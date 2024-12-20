@@ -9,5 +9,8 @@ typedef double complex Complex64;
 parse_deps = true
 include = ["qiskit-accelerate"]
 
+[export]
+include = ["CSparseObservable"]
+
 [enum]
 prefix_with_name = true
