@@ -1,0 +1,5 @@
+=================
+Sparse Observable
+=================
+
+.. doxygenindex::

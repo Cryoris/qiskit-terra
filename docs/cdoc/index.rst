@@ -2,4 +2,9 @@
 Qiskit C API (``qiskit.h``)
 ===========================
 
-.. doxygenindex::
+Quantum information:
+
+.. toctree::
+   :maxdepth: 1
+
+   sparse_observable
