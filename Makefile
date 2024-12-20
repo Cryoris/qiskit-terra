@@ -89,7 +89,7 @@ cformat:
 # Build C API crate and header
 cbuild:
 	cargo build --release --no-default-features --features cbinding
-	cbindgen --crate qiskit-c-ext --output test/c/qiskit.h --lang C
+	cbindgen --crate qiskit-c-ext --output qiskit.h --lang C
 
 # Use ctest to run C API tests
 ctest: cbuild

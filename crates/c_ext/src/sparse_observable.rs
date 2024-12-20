@@ -13,6 +13,7 @@
 use num_complex::Complex64;
 use qiskit_accelerate::sparse_observable::{BitTerm, SparseObservable, SparseTerm};
 
+/// @ingroup PauliTermVec
 /// A Pauli term vector, containing ``(index, bit_term)`` tuples.
 #[derive(Debug, Clone)]
 pub struct PauliTermVec {
@@ -22,6 +23,7 @@ pub struct PauliTermVec {
     bit_terms: Vec<BitTerm>,
 }
 
+/// @ingroup PauliTerm
 /// A struct representing a (Pauli, qubit index) tuple.
 #[repr(C)]
 pub struct PauliTerm {
@@ -29,17 +31,18 @@ pub struct PauliTerm {
     index: u32,
 }
 
+/// @ingroup PauliTerm
 /// Free the Pauli term.
 ///
 /// @param A pointer to the Pauli term struct.
 ///
 /// Example:
-///     
+///
 ///     SparseObservable *obs = obs_zero(100);
 ///     PauliTermVec *paulis = paulis_new();
 ///     paulis_push(paulis, BitTerm_X, 99);  // push X_99 onto the vector
 ///     obs_push_consume(obs, paulis, 2.0);  // add the Pauli term 2 * X_99 to the observable
-///  
+///
 ///     SparseTerm *term = obs_term(obs, 0);  // get the 0th Pauli term in the observable
 ///     PauliTerm *pauli = obsterm_pauli(term, 0);  // get the 0th Pauli in the Pauli term
 ///     printf("Bit term: %i, Index: %i", pauli->bit_term, pauli->index);
@@ -54,6 +57,7 @@ pub extern "C" fn pauli_free(pauli: &mut PauliTerm) {
     }
 }
 
+/// @ingroup PauliTermVec
 /// Create a new Pauli term vector.
 ///
 /// @return A pointer to an empty Pauli term vector.
@@ -72,6 +76,7 @@ pub extern "C" fn paulis_new() -> *mut PauliTermVec {
     Box::into_raw(Box::new(paulis))
 }
 
+/// @ingroup PauliTermVec
 /// Create a new Pauli term vector, with a given capacity.
 ///
 /// @param capacity The capacity to allocate for the vector.
@@ -93,6 +98,7 @@ pub extern "C" fn paulis_with_capacity(capacity: u64) -> *mut PauliTermVec {
     Box::into_raw(Box::new(paulis))
 }
 
+/// @ingroup PauliTermVec
 /// Free the Pauli term vector.
 ///
 /// @param paulis A pointer to the index vector to be freed.
@@ -111,6 +117,7 @@ pub extern "C" fn paulis_free(paulis: &mut PauliTermVec) {
     }
 }
 
+/// @ingroup PauliTermVec
 /// Push a new ``(bit_term, index)`` tuple onto the Pauli term vector.
 ///
 /// @param paulis A pointer to the Pauli term vector.
@@ -129,6 +136,7 @@ pub extern "C" fn paulis_push(paulis: &mut PauliTermVec, bit_term: BitTerm, inde
     paulis.indices.push(index);
 }
 
+/// @ingroup SparseObservable
 /// Construct the zero observable (without any terms).
 ///
 /// @param num_qubits The number of qubits the observable is defined on.
@@ -146,6 +154,7 @@ pub extern "C" fn obs_zero(num_qubits: u32) -> *mut SparseObservable {
     Box::into_raw(Box::new(obs))
 }
 
+/// @ingroup SparseObservable
 /// Construct the identity observable.
 ///
 /// @param num_qubits The number of qubits the observable is defined on.
@@ -163,6 +172,7 @@ pub extern "C" fn obs_identity(num_qubits: u32) -> *mut SparseObservable {
     Box::into_raw(Box::new(obs))
 }
 
+/// @ingroup SparseObservable
 /// Deallocate the observable.
 ///
 /// Memory deallocation is user responsibility. Every constructed observable
@@ -183,13 +193,14 @@ pub extern "C" fn obs_free(obs: &mut SparseObservable) {
     }
 }
 
+/// @ingroup SparseObservable
 /// @brief Add a term to the observable by copy.
 ///
 /// @param obs A pointer to the observable to which the term is added.
 /// @param paulis The Pauli term vector to add to the observable.
 /// @param coeff The coefficient of the term.
 ///
-/// Example:  
+/// Example:
 ///
 ///     u_int32_t num_qubits = 100;
 ///     SparseObservable *obs = obs_zero(num_qubits);
@@ -223,6 +234,7 @@ pub extern "C" fn obs_push_copy(
     obs.add_term(term.view()).unwrap();
 }
 
+/// @ingroup SparseObservable
 /// @brief Add a term to the observable and deallocate the memory for the indices and bit terms.
 ///
 /// @param obs A pointer to the observable to which the term is added.
@@ -231,7 +243,7 @@ pub extern "C" fn obs_push_copy(
 ///
 /// @warning Panics if an index in the Pauli term is greater equal than the number of qubits.
 ///
-/// Example:  
+/// Example:
 ///
 ///     u_int32_t num_qubits = 100;
 ///     SparseObservable *obs = obs_zero(num_qubits);
@@ -267,6 +279,7 @@ pub extern "C" fn obs_push_consume(
     obs.add_term(term.view()).unwrap(); // TODO handle error
 }
 
+/// @ingroup SparseObservable
 /// Get an observable term.
 ///
 /// @param obs A pointer to the observable.
@@ -279,7 +292,7 @@ pub extern "C" fn obs_push_consume(
 ///     SparseObservable *obs = obs_identity(100);
 ///     SparseTerm *term = obs_term(obs, 0);
 ///     // out-of-bounds indices will fail
-///     // SparseTerm *will_fail = obs_term(obs, 1);  
+///     // SparseTerm *will_fail = obs_term(obs, 1);
 ///
 #[no_mangle]
 #[cfg(feature = "cbinding")]
@@ -291,13 +304,14 @@ pub extern "C" fn obs_term(obs: &SparseObservable, index: u64) -> *mut SparseTer
     Box::into_raw(Box::new(term))
 }
 
+/// @ingroup SparseObservable
 /// Multiply the observable by a complex coefficient.
 ///
 /// @param obs A pointer to the observable.
 /// @param coeff The coefficient to multiply the observable with.
 ///
 /// Example:
-///     
+///
 ///     SparseObservable *obs = obs_identity(100);
 ///     SparseObservable *result = obs_multiply(obs, 2);
 #[no_mangle]
@@ -307,6 +321,7 @@ pub extern "C" fn obs_multiply(obs: &SparseObservable, coeff: Complex64) -> *mut
     Box::into_raw(Box::new(result))
 }
 
+/// @ingroup SparseObservable
 /// Add two observables.
 ///
 /// @param left A pointer to the left observable.
@@ -315,7 +330,7 @@ pub extern "C" fn obs_multiply(obs: &SparseObservable, coeff: Complex64) -> *mut
 /// @return A pointer to the result ``left + right``.
 ///
 /// Example:
-///     
+///
 ///     SparseObservable *left = obs_identity(100);
 ///     SparseObservable *right = obs_zero(100);
 ///     SparseObservable *result = obs_add(left, right);
@@ -330,6 +345,7 @@ pub extern "C" fn obs_add(
     Box::into_raw(Box::new(result))
 }
 
+/// @ingroup SparseObservable
 /// Calculate the canonical representation of the observable.
 ///
 /// @param obs A pointer to the observable.
@@ -355,6 +371,7 @@ pub extern "C" fn obs_canonicalize(
     Box::into_raw(Box::new(result))
 }
 
+/// @ingroup SparseObservable
 /// Copy the observable.
 ///
 /// @param obs A pointer to the observable.
@@ -373,6 +390,7 @@ pub extern "C" fn obs_copy(obs: &SparseObservable) -> *mut SparseObservable {
     Box::into_raw(Box::new(copied))
 }
 
+/// @ingroup SparseObservable
 /// Compare two observables for equality.
 ///
 /// Note that this does not compare mathematical equality, but data equality. This means
@@ -394,6 +412,8 @@ pub extern "C" fn obs_copy(obs: &SparseObservable) -> *mut SparseObservable {
 pub extern "C" fn obs_equal(observable: &SparseObservable, other: &SparseObservable) -> bool {
     observable.eq(other)
 }
+
+/// @ingroup SparseObservable
 /// Get the number of terms in the observable.
 ///
 /// @param observable A pointer to the observable.
@@ -411,6 +431,7 @@ pub extern "C" fn obs_num_terms(observable: &SparseObservable) -> u64 {
     observable.num_terms() as u64
 }
 
+/// @ingroup SparseObservable
 /// Get the number of qubits the observable is defined on.
 ///
 /// @param observable A pointer to the observable.
@@ -428,6 +449,7 @@ pub extern "C" fn obs_num_qubits(observable: &SparseObservable) -> u32 {
     observable.num_qubits()
 }
 
+/// @ingroup SparseObservable
 /// Print the observable.
 ///
 /// @param term A pointer to the ``SparseObservable`` to print.
@@ -443,6 +465,7 @@ pub extern "C" fn obs_print(observable: &SparseObservable) {
     println!("{:?}", observable);
 }
 
+/// @ingroup SparseTerm
 /// Deallocate the term.
 ///
 /// The term is **not** automatically deallocated if the observable it
@@ -466,12 +489,13 @@ pub extern "C" fn obsterm_free(term: &mut SparseTerm) {
     }
 }
 
+/// @ingroup SparseTerm
 /// Print a sparse term.
 ///
 /// @param term A pointer to the ``SparseTerm`` to print.
 ///
 /// Example:
-///     
+///
 ///     SparseObservable *obs = obs_identity(100);
 ///     SparseTerm *term = obs_term(obs, 0);
 ///     obsterm_print(term);
@@ -482,6 +506,7 @@ pub extern "C" fn obsterm_print(term: &SparseTerm) {
     println!("{:?}", term);
 }
 
+/// @ingroup SparseTerm
 /// Get the coefficient of a sparse term.
 ///
 /// @param term A pointer to the ``SparseTerm`` whose coefficient is returned.
@@ -489,7 +514,7 @@ pub extern "C" fn obsterm_print(term: &SparseTerm) {
 /// @return The complex coefficient of the sparse term.
 ///
 /// Example:
-///     
+///
 ///     SparseObservable *obs = obs_identity(100);
 ///     SparseTerm *term = obs_term(obs, 0);
 ///     complex double coeff = obsterm_coeff(term);
@@ -500,6 +525,7 @@ pub extern "C" fn obsterm_coeff(term: &SparseTerm) -> Complex64 {
     term.coeff()
 }
 
+/// @ingroup SparseTerm
 /// Get the number of qubits the sparse term is defined on.
 ///
 /// @param term A pointer to the ``SparseTerm`` whose number of qubits is returned.
@@ -507,7 +533,7 @@ pub extern "C" fn obsterm_coeff(term: &SparseTerm) -> Complex64 {
 /// @return The number of qubits the sparse term is defined on.
 ///
 /// Example:
-///     
+///
 ///     SparseObservable *obs = obs_identity(100);
 ///     SparseTerm *term = obs_term(obs, 0);
 ///     uint32_t num_qubits = obsterm_num_qubits(term);
@@ -518,6 +544,7 @@ pub extern "C" fn obsterm_num_qubits(term: &SparseTerm) -> u32 {
     term.num_qubits()
 }
 
+/// @ingroup SparseTerm
 /// Get the number of non-identity (nni) Paulis in the sparse term.
 ///
 /// @param term A pointer to the ``SparseTerm``.
@@ -525,7 +552,7 @@ pub extern "C" fn obsterm_num_qubits(term: &SparseTerm) -> u32 {
 /// @return The number of non-identity Paulis.
 ///
 /// Example:
-///     
+///
 ///     SparseObservable *obs = obs_identity(100);
 ///     SparseTerm *term = obs_term(obs, 0);
 ///     uint32_t nni = obsterm_nni(term);
@@ -537,6 +564,7 @@ pub extern "C" fn obsterm_nni(term: &SparseTerm) -> u32 {
     term.indices().len() as u32
 }
 
+/// @ingroup SparseTerm
 /// Get the (Pauli, qubit index) tuple inside term.
 ///
 /// @param term A pointer to the ``SparseTerm``.
@@ -545,7 +573,7 @@ pub extern "C" fn obsterm_nni(term: &SparseTerm) -> u32 {
 /// @return The Pauli and qubit index it acts on as struct.
 ///
 /// Example:
-///     
+///
 ///     SparseObservable *obs = obs_identity(100);
 ///     SparseTerm *term = obs_term(obs, 0);
 ///     uint32_t nni = obsterm_nni(term);

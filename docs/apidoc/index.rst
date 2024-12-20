@@ -3,9 +3,9 @@
    Within each section, the modules should be ordered alphabetically by
    module name (not RST filename).
 
-=============
-API Reference
-=============
+====================
+Python API Reference
+====================
 
 Circuit construction:
 
