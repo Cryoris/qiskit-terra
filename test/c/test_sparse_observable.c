@@ -8,7 +8,7 @@ int test_zero()
     SparseObservable *obs = obs_zero(100);
     uint64_t num_terms = obs_num_terms(obs);
     uint32_t num_qubits = obs_num_qubits(obs);
-    obs_deallocate(obs);
+    obs_free(obs);
 
     if (num_terms != 0 || num_qubits != 100)
     {
@@ -22,7 +22,7 @@ int test_identity()
     SparseObservable *obs = obs_identity(100);
     uint64_t num_terms = obs_num_terms(obs);
     uint32_t num_qubits = obs_num_qubits(obs);
-    obs_deallocate(obs);
+    obs_free(obs);
 
     if (num_terms != 1 || num_qubits != 100)
     {
@@ -38,8 +38,8 @@ int test_copy()
 
     bool are_equal = obs_equal(obs, copied);
 
-    obs_deallocate(obs);
-    obs_deallocate(copied);
+    obs_free(obs);
+    obs_free(copied);
 
     if (!are_equal)
     {
@@ -57,9 +57,9 @@ int test_add()
 
     uint64_t num_terms = obs_num_terms(obs);
 
-    obs_deallocate(left);
-    obs_deallocate(right);
-    obs_deallocate(obs);
+    obs_free(left);
+    obs_free(right);
+    obs_free(obs);
 
     if (num_terms != 2)
     {
@@ -88,9 +88,9 @@ int test_mult()
         bool is_equal = obs_equal(expected, result);
 
         // deallocate before returning
-        obs_deallocate(obs);
-        obs_deallocate(result);
-        obs_deallocate(expected);
+        obs_free(obs);
+        obs_free(result);
+        obs_free(expected);
 
         if (!is_equal)
         {
@@ -117,11 +117,11 @@ int test_canonicalize()
 
     bool is_equal = obs_equal(expected, simplified);
 
-    obs_deallocate(obs);
-    obs_deallocate(right);
-    obs_deallocate(left);
-    obs_deallocate(simplified);
-    obs_deallocate(expected);
+    obs_free(obs);
+    obs_free(right);
+    obs_free(left);
+    obs_free(simplified);
+    obs_free(expected);
 
     if (!is_equal)
     {
@@ -142,7 +142,7 @@ int test_num_terms()
     {
         result = EqualityError;
     }
-    obs_deallocate(zero);
+    obs_free(zero);
 
     SparseObservable *iden = obs_identity(100);
     num_terms = obs_num_terms(iden);
@@ -150,7 +150,7 @@ int test_num_terms()
     {
         result = EqualityError;
     }
-    obs_deallocate(iden);
+    obs_free(iden);
 
     return result;
 }
@@ -166,7 +166,7 @@ int test_num_qubits()
     {
         result = EqualityError;
     }
-    obs_deallocate(obs);
+    obs_free(obs);
 
     SparseObservable *obs100 = obs_zero(100);
     num_qubits = obs_num_qubits(obs100);
@@ -174,7 +174,7 @@ int test_num_qubits()
     {
         result = EqualityError;
     }
-    obs_deallocate(obs100);
+    obs_free(obs100);
 
     return result;
 }
@@ -200,8 +200,8 @@ int test_custom_build()
     uint64_t num_terms = obs_num_terms(obs);
     uint64_t num_terms_simplified = obs_num_terms(simplified);
 
-    obs_deallocate(obs);
-    obs_deallocate(simplified);
+    obs_free(obs);
+    obs_free(simplified);
 
     if (num_terms != 2 || num_terms_simplified != 1)
     {
@@ -244,13 +244,13 @@ int test_term()
             bits[n] = pterm->bit_term;
             indices[n] = pterm->index;
 
-            pauli_deallocate(pterm);
+            pauli_free(pterm);
         }
 
-        obsterm_deallocate(term);
+        obsterm_free(term);
     }
 
-    obs_deallocate(obs);
+    obs_free(obs);
 
     int result = 0;
     int expected_nnis[2] = {0, 3};

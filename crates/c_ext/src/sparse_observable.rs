@@ -44,11 +44,11 @@ pub struct PauliTerm {
 ///     PauliTerm *pauli = obsterm_pauli(term, 0);  // get the 0th Pauli in the Pauli term
 ///     printf("Bit term: %i, Index: %i", pauli->bit_term, pauli->index);
 ///
-///     pauli_deallocate(pauli);  // deallocate the struct
+///     pauli_free(pauli);  // deallocate the struct
 ///
 #[no_mangle]
 #[cfg(feature = "cbinding")]
-pub extern "C" fn pauli_deallocate(pauli: &mut PauliTerm) {
+pub extern "C" fn pauli_free(pauli: &mut PauliTerm) {
     unsafe {
         let _ = Box::from_raw(pauli);
     }
@@ -101,11 +101,11 @@ pub extern "C" fn paulis_with_capacity(capacity: u64) -> *mut PauliTermVec {
 ///
 ///     PauliTermVec *paulis = paulis_new();
 ///     paulis_push(paulis, BitTerm_Z, 2);
-///     paulis_deallocate(paulis);
+///     paulis_free(paulis);
 ///
 #[no_mangle]
 #[cfg(feature = "cbinding")]
-pub extern "C" fn paulis_deallocate(paulis: &mut PauliTermVec) {
+pub extern "C" fn paulis_free(paulis: &mut PauliTermVec) {
     unsafe {
         let _ = Box::from_raw(paulis);
     }
@@ -173,11 +173,11 @@ pub extern "C" fn obs_identity(num_qubits: u32) -> *mut SparseObservable {
 /// Example:
 ///
 ///     SparseObservable *obs = obs_zero(100);
-///     obs_deallocate(obs);
+///     obs_free(obs);
 ///
 #[no_mangle]
 #[cfg(feature = "cbinding")]
-pub extern "C" fn obs_deallocate(obs: &mut SparseObservable) {
+pub extern "C" fn obs_free(obs: &mut SparseObservable) {
     unsafe {
         let _ = Box::from_raw(obs);
     }
@@ -203,7 +203,7 @@ pub extern "C" fn obs_deallocate(obs: &mut SparseObservable) {
 ///
 ///     obs_push_copy(obs, bits, indices, coeff);  // push the term, without consuming the Pauli term
 ///
-///     paulis_deallocate(paulis);  // manually free the Pauli term vector
+///     paulis_free(paulis);  // manually free the Pauli term vector
 ///
 #[no_mangle]
 #[cfg(feature = "cbinding")]
@@ -455,12 +455,12 @@ pub extern "C" fn obs_print(observable: &SparseObservable) {
 ///     SparseObservable *obs = obs_identity(100);
 ///     SparseTerm *term = obs_term(obs, 0);
 ///
-///     obs_deallocate(obs);  // term is still allocated!
-///     obsterm_deallocate(term);
+///     obs_free(obs);  // term is still allocated!
+///     obsterm_free(term);
 ///
 #[no_mangle]
 #[cfg(feature = "cbinding")]
-pub extern "C" fn obsterm_deallocate(term: &mut SparseTerm) {
+pub extern "C" fn obsterm_free(term: &mut SparseTerm) {
     unsafe {
         let _ = Box::from_raw(term);
     }
