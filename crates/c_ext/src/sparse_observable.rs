@@ -201,7 +201,7 @@ pub extern "C" fn obs_free(obs: &mut SparseObservable) {
 ///     paulis_push(paulis, BitTerm_Y, 1);
 ///     paulis_push(paulis, BitTerm_Z, 2);
 ///
-///     obs_push_copy(obs, bits, indices, coeff);  // push the term, without consuming the Pauli term
+///     obs_push_copy(obs, bits, indices, &coeff);  // push the term, without consuming the Pauli term
 ///
 ///     paulis_free(paulis);  // manually free the Pauli term vector
 ///
@@ -210,11 +210,11 @@ pub extern "C" fn obs_free(obs: &mut SparseObservable) {
 pub extern "C" fn obs_push_copy(
     obs: &mut SparseObservable,
     paulis: &PauliTermVec,
-    coeff: Complex64,
+    coeff: &Complex64,
 ) {
     let term = SparseTerm::new(
         obs.num_qubits(),
-        coeff,
+        *coeff, // safe to dereference, because Complex64 implements Copy
         paulis.bit_terms.clone().into_boxed_slice(),
         paulis.indices.clone().into_boxed_slice(),
     )
@@ -250,7 +250,7 @@ pub extern "C" fn obs_push_copy(
 pub extern "C" fn obs_push_consume(
     obs: &mut SparseObservable,
     paulis: &mut PauliTermVec,
-    coeff: Complex64,
+    coeff: &Complex64,
 ) {
     // we take ownership of the memory and let the variables go out of scope
     // after this function, consuming the ``paulis`` variable
@@ -258,7 +258,7 @@ pub extern "C" fn obs_push_consume(
 
     let term = SparseTerm::new(
         obs.num_qubits(),
-        coeff,
+        *coeff,
         paulis.bit_terms.into_boxed_slice(),
         paulis.indices.into_boxed_slice(),
     )
@@ -302,8 +302,8 @@ pub extern "C" fn obs_term(obs: &SparseObservable, index: u64) -> *mut SparseTer
 ///     SparseObservable *result = obs_multiply(obs, 2);
 #[no_mangle]
 #[cfg(feature = "cbinding")]
-pub extern "C" fn obs_multiply(obs: &SparseObservable, coeff: Complex64) -> *mut SparseObservable {
-    let result = obs * coeff;
+pub extern "C" fn obs_multiply(obs: &SparseObservable, coeff: &Complex64) -> *mut SparseObservable {
+    let result = obs * (*coeff);
     Box::into_raw(Box::new(result))
 }
 

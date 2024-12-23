@@ -1766,27 +1766,25 @@ impl PySparseObservable {
         let (num_qubits, layout): (u32, Option<Vec<u32>>) = if layout.is_none() {
             // if the layout is none,
             (num_qubits.unwrap_or(inner.num_qubits()), None)
+        } else if layout.is_instance(
+            &py.import_bound(intern!(py, "qiskit.transpiler"))?
+                .getattr(intern!(py, "TranspileLayout"))?,
+        )? {
+            (
+                check_inferred_qubits(
+                    layout.getattr(intern!(py, "_output_qubit_list"))?.len()? as u32
+                )?,
+                Some(
+                    layout
+                        .call_method0(intern!(py, "final_index_layout"))?
+                        .extract::<Vec<u32>>()?,
+                ),
+            )
         } else {
-            if layout.is_instance(
-                &py.import_bound(intern!(py, "qiskit.transpiler"))?
-                    .getattr(intern!(py, "TranspileLayout"))?,
-            )? {
-                (
-                    check_inferred_qubits(
-                        layout.getattr(intern!(py, "_output_qubit_list"))?.len()? as u32,
-                    )?,
-                    Some(
-                        layout
-                            .call_method0(intern!(py, "final_index_layout"))?
-                            .extract::<Vec<u32>>()?,
-                    ),
-                )
-            } else {
-                (
-                    check_inferred_qubits(num_qubits.unwrap_or(inner.num_qubits()))?,
-                    Some(layout.extract()?),
-                )
-            }
+            (
+                check_inferred_qubits(num_qubits.unwrap_or(inner.num_qubits()))?,
+                Some(layout.extract()?),
+            )
         };
         let out = inner.apply_layout(layout.as_deref(), num_qubits)?;
         Ok(Self {
@@ -1904,7 +1902,7 @@ impl PySparseObservable {
         // we acquire the read lock once here and use the internal methods
         // to avoid checking and acquiring the lock in every method call
         let inner = self.inner.read().map_err(|_| InnerReadError)?;
-        let bit_terms: &[u8] = ::bytemuck::cast_slice(&inner.bit_terms());
+        let bit_terms: &[u8] = ::bytemuck::cast_slice(inner.bit_terms());
         Ok((
             py.get_type_bound::<Self>().getattr("from_raw_parts")?,
             (

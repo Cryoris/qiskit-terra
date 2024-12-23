@@ -1,3 +1,5 @@
+cmake_minimum_required (VERSION 3.27)
+
 # We are using CMake to build our C API test suite, and we leverage ctest to run
 # those tests.
 enable_testing ()

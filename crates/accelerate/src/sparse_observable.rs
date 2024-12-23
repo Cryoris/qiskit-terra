@@ -1072,21 +1072,21 @@ impl SparseObservable {
                     });
                 }
                 out.num_qubits = num_qubits;
-                return Ok(out);
+                Ok(out)
             }
             Some(layout) => {
                 if layout.len() < self.num_qubits as usize {
-                    return Err(CoherenceError::IndexMapTooSmall.into());
+                    return Err(CoherenceError::IndexMapTooSmall);
                 }
                 if layout.iter().any(|qubit| *qubit >= num_qubits) {
-                    return Err(CoherenceError::BitIndexTooHigh.into());
+                    return Err(CoherenceError::BitIndexTooHigh);
                 }
                 if layout.iter().collect::<HashSet<_>>().len() != layout.len() {
-                    return Err(CoherenceError::DuplicateIndices.into());
+                    return Err(CoherenceError::DuplicateIndices);
                 }
                 let mut out = self.clone();
                 out.num_qubits = num_qubits;
-                out.relabel_qubits_from_slice(&layout)?;
+                out.relabel_qubits_from_slice(layout)?;
                 Ok(out)
             }
         }
@@ -1455,11 +1455,11 @@ impl SparseTerm {
         self.coeff
     }
 
-    pub fn indices<'a>(&'a self) -> &'a [u32] {
+    pub fn indices(&self) -> &[u32] {
         &self.indices
     }
 
-    pub fn bit_terms<'a>(&'a self) -> &'a [BitTerm] {
+    pub fn bit_terms(&self) -> &[BitTerm] {
         &self.bit_terms
     }
 

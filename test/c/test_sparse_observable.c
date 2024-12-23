@@ -79,12 +79,12 @@ int test_mult() {
     for (int i = 0; i < 3; i++) {
         SparseObservable *obs = obs_identity(100);
 
-        SparseObservable *result = obs_multiply(obs, coeffs[i]);
+        SparseObservable *result = obs_multiply(obs, &coeffs[i]);
 
         // construct the expected observable: coeff * Id
         SparseObservable *expected = obs_zero(100);
         PauliTermVec *paulis = paulis_new();
-        obs_push_consume(expected, paulis, coeffs[i]);
+        obs_push_consume(expected, paulis, &coeffs[i]);
 
         // perform the check
         bool is_equal = obs_equal(expected, result);
@@ -113,7 +113,8 @@ int test_canonicalize() {
     // construct the expected observable: 2 * Id
     SparseObservable *expected = obs_zero(100);
     PauliTermVec *paulis = paulis_new();
-    obs_push_consume(expected, paulis, 2.0);
+    complex double coeff = 2.0;
+    obs_push_consume(expected, paulis, &coeff);
 
     bool is_equal = obs_equal(expected, simplified);
 
@@ -183,8 +184,8 @@ int test_custom_build() {
     paulis_push(paulis, BitTerm_Y, 1);
     paulis_push(paulis, BitTerm_Z, 2);
 
-    obs_push_copy(obs, paulis, coeff);
-    obs_push_consume(obs, paulis, coeff); // consumes the bits and indices vectors
+    obs_push_copy(obs, paulis, &coeff);
+    obs_push_consume(obs, paulis, &coeff); // consumes the bits and indices vectors
 
     double tol = 1e-6;
     SparseObservable *simplified = obs_canonicalize(obs, tol);
@@ -212,7 +213,7 @@ int test_term() {
 
     complex double coeff = 1 + I;
 
-    obs_push_consume(obs, paulis, coeff);
+    obs_push_consume(obs, paulis, &coeff);
 
     // some placeholders to store the results
     int nnis[2] = {-1, -1};
