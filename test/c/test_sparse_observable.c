@@ -274,7 +274,6 @@ int test_sparse_observable() {
     num_failed += RUN_TEST(test_identity);
     num_failed += RUN_TEST(test_add);
     num_failed += RUN_TEST(test_mult);
-    fflush(stderr);
     num_failed += RUN_TEST(test_canonicalize);
     num_failed += RUN_TEST(test_copy);
     num_failed += RUN_TEST(test_num_terms);
@@ -282,6 +281,7 @@ int test_sparse_observable() {
     num_failed += RUN_TEST(test_custom_build);
     num_failed += RUN_TEST(test_term);
 
+    fflush(stderr);
     fprintf(stderr, "=== Number of failed subtests: %i\n", num_failed);
 
     return num_failed;

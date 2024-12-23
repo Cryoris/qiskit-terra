@@ -21,6 +21,8 @@ create_test_sourcelist (source_files test_driver.c ${discovered_tests})
 
 # Actually define the test driver program executable to be built...
 add_executable (test_driver ${source_files})
+# ...include the location of the header file...
+target_include_directories (test_driver PRIVATE ${CMAKE_SOURCE_DIR})
 # ...and linked with the qiskit library.
 target_link_libraries (test_driver ${qiskit})
 
