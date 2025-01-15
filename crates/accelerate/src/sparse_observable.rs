@@ -90,7 +90,7 @@ impl BitTerm {
     /// Get the label of this `BitTerm` used in Python-space applications.  This is a single-letter
     /// string.
     #[inline]
-    pub(crate) fn py_label(&self) -> &'static str {
+    pub fn py_label(&self) -> &'static str {
         match self {
             Self::X => "X",
             Self::Plus => "+",
@@ -106,7 +106,7 @@ impl BitTerm {
 
     /// Get the name of this `BitTerm`, which is how Python space refers to the integer constant.
     #[inline]
-    pub(crate) fn py_name(&self) -> &'static str {
+    pub fn py_name(&self) -> &'static str {
         match self {
             Self::X => "X",
             Self::Plus => "PLUS",
@@ -126,7 +126,7 @@ impl BitTerm {
     /// returning `Ok(None)` for it.  All other letters outside the alphabet return the complete
     /// error condition.
     #[inline]
-    pub(crate) fn try_from_u8(value: u8) -> Result<Option<Self>, BitTermFromU8Error> {
+    pub fn try_from_u8(value: u8) -> Result<Option<Self>, BitTermFromU8Error> {
         match value {
             b'+' => Ok(Some(BitTerm::Plus)),
             b'-' => Ok(Some(BitTerm::Minus)),

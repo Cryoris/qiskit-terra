@@ -13,4 +13,4 @@ include = ["qiskit-accelerate"]
 prefix_with_name = true
 
 [export.rename]
-"CSparseTermView" = "SparseTermView"
+"CSparseTerm" = "SparseTerm"

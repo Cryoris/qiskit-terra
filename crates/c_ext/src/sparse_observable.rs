@@ -10,10 +10,9 @@
 // copyright notice, and modified files need to carry a notice indicating
 // that they have been altered from the originals.
 
+use crate::exit_codes::ExitCode;
 use num_complex::Complex64;
-use qiskit_accelerate::sparse_observable::{
-    ArithmeticError, BitTerm, SparseObservable, SparseTerm, SparseTermView,
-};
+use qiskit_accelerate::sparse_observable::{BitTerm, SparseObservable, SparseTermView};
 use thiserror::Error;
 
 /// Errors related to C input.
@@ -25,41 +24,13 @@ pub enum CInputError {
     AlignmentError,
 }
 
-/// Integer error codes returned to C.
-#[repr(u32)]
-pub enum ExitCode {
-    Success = 0, // these need to be fixed for backward compat
-    AlignmentError = 1,
-    NullPointerError = 2,
-    ArithmeticError = 3,
-    IndexError = 4,
-}
-
-impl From<ExitCode> for u32 {
-    fn from(value: ExitCode) -> Self {
-        value as u32
-    }
-}
-
-impl From<ArithmeticError> for ExitCode {
-    fn from(_value: ArithmeticError) -> Self {
-        ExitCode::ArithmeticError // do we want to cover each error enum here?
-    }
-}
-
-impl From<CInputError> for ExitCode {
-    fn from(value: CInputError) -> Self {
-        match value {
-            CInputError::AlignmentError => ExitCode::AlignmentError,
-            CInputError::NullPointerError => ExitCode::NullPointerError,
-        }
-    }
-}
-
-/// @ingroup CSparseTermView
-/// @brief A view on a sparse term, using data owned by C.
+/// @ingroup SparseTerm
+/// A term in a [SparseObservable].
+///
+/// This term does not own the data, but only contains pointers (and a size) to the
+/// bit terms, indices and the coefficient.
 #[repr(C)]
-pub struct CSparseTermView {
+pub struct CSparseTerm {
     coeff: *mut Complex64,
     len: usize,
     bit_terms: *mut BitTerm,
@@ -67,10 +38,10 @@ pub struct CSparseTermView {
     num_qubits: u32,
 }
 
-impl TryFrom<&CSparseTermView> for SparseTermView<'_> {
+impl TryFrom<&CSparseTerm> for SparseTermView<'_> {
     type Error = CInputError;
 
-    fn try_from(value: &CSparseTermView) -> Result<Self, Self::Error> {
+    fn try_from(value: &CSparseTerm) -> Result<Self, Self::Error> {
         if value.bit_terms.is_null() || value.indices.is_null() {
             return Err(CInputError::NullPointerError);
         }
@@ -150,68 +121,66 @@ pub extern "C" fn obs_free(obs: &mut SparseObservable) {
 }
 
 /// @ingroup SparseObservable
-/// @brief Add a term to the observable.
+/// Add a term to the observable.
+///
+/// @param obs A pointer to the observable.
+/// @param A pointer to the term to add.
+///
+/// @return An exit code. This is ``>0`` if the term is incoherent or adding the term fails.
+///
+/// Example:
+///
+///     uint32_t num_qubits = 100;
+///     SparseObservable *obs = obs_zero(num_qubits);
+///
+///     complex double coeff = 1;
+///     BitTerm bit_terms[3] = {BitTerm_X, BitTerm_Y, BitTerm_Z};
+///     uint32_t indices[3] = {0, 1, 2};
+///     SparseTerm term = {&coeff, 3, bit_terms, indices, num_qubits};
+///
+///     obs_add_term(obs, &term);
+///
 #[no_mangle]
 #[cfg(feature = "cbinding")]
-pub extern "C" fn obs_add_term(obs: &mut SparseObservable, cterm: &CSparseTermView) -> u32 {
+pub extern "C" fn obs_add_term(obs: &mut SparseObservable, cterm: &CSparseTerm) -> ExitCode {
     let view = match cterm.try_into() {
         Ok(view) => view,
-        Err(err) => return ExitCode::from(err).into(),
+        Err(err) => return ExitCode::from(err),
     };
 
     match obs.add_term(view) {
-        Ok(_) => ExitCode::Success.into(),
-        Err(err) => ExitCode::from(err).into(),
+        Ok(_) => ExitCode::Success,
+        Err(err) => ExitCode::from(err),
     }
 }
 
 /// @ingroup SparseObservable
-/// Get a copy of an observable term.
+/// Get an observable term by reference. This can modify the underlying observable.
 ///
 /// @param obs A pointer to the observable.
 /// @param index The index of the term to get.
+/// @param out A pointer to a [CSparseTerm] used to return the observable term.
 ///
-/// @return A pointer to a sparse term.
+/// @return An exit code.
 ///
 /// Example:
 ///
 ///     SparseObservable *obs = obs_identity(100);
-///     SparseTerm *term = obs_term(obs, 0);
-///     // out-of-bounds indices will fail
-///     // SparseTerm *will_fail = obs_term(obs, 1);
+///     SparseTerm term;
+///     obs_term(obs, 0, &term);
+///     // out-of-bounds indices return an error code
+///     // int error = obs_term(obs, 12, &term);
 ///
 #[no_mangle]
 #[cfg(feature = "cbinding")]
-pub extern "C" fn obs_term(obs: &SparseObservable, index: u64) -> *mut SparseTerm {
-    let term = obs.term(index as usize).to_term();
-    Box::into_raw(Box::new(term))
-}
-
-/// @ingroup SparseObservable
-/// Get a view an observable term. This can modify the underlying observable.
-///
-/// @param obs A pointer to the observable.
-/// @param index The index of the term to get.
-///
-/// @return A pointer to a sparse term view.
-///
-/// Example:
-///
-///     SparseObservable *obs = obs_identity(100);
-///     SparseTermView *term = obs_term(obs, 0);
-///     // out-of-bounds indices will fail
-///     // SparseTerm *will_fail = obs_term(obs, 1);
-///
-#[no_mangle]
-#[cfg(feature = "cbinding")]
-pub extern "C" fn obs_view(
+pub extern "C" fn obs_term(
     obs: &mut SparseObservable,
     index: u64,
-    out: &mut CSparseTermView,
-) -> u32 {
+    out: &mut CSparseTerm,
+) -> ExitCode {
     let index = index as usize;
     if index > obs.num_terms() {
-        return ExitCode::IndexError.into();
+        return ExitCode::IndexError;
     }
 
     out.len = obs.boundaries()[index + 1] - obs.boundaries()[index];
@@ -222,7 +191,7 @@ pub extern "C" fn obs_view(
     out.bit_terms = &mut obs.bit_terms_mut()[start];
     out.indices = unsafe { &mut obs.indices_mut()[start] };
 
-    ExitCode::Success.into()
+    ExitCode::Success
 }
 
 /// @ingroup SparseObservable
@@ -233,6 +202,13 @@ pub extern "C" fn obs_view(
 /// @param obs A pointer to the observable.
 ///
 /// @return A pointer to the coefficients.
+///
+/// Example:
+///
+///     SparseObservable *iden = obs_identity(100);
+///     complex double *coeffs = obs_coeffs(obs);
+///     assert coeffs[0] == 1;
+///
 #[no_mangle]
 #[cfg(feature = "cbinding")]
 pub extern "C" fn obs_coeffs(obs: &mut SparseObservable) -> *mut Complex64 {
@@ -252,7 +228,7 @@ pub extern "C" fn obs_coeffs(obs: &mut SparseObservable) -> *mut Complex64 {
 pub extern "C" fn obs_indices(obs: &mut SparseObservable) -> *mut u32 {
     // this is unsafe as we can no longer ensure the indices are within
     // range of the observable's number of qubits
-    &mut unsafe { obs.indices_mut()[0] }
+    unsafe { &mut obs.indices_mut()[0] }
 }
 
 /// @ingroup SparseObservable
@@ -266,7 +242,7 @@ pub extern "C" fn obs_indices(obs: &mut SparseObservable) -> *mut u32 {
 #[no_mangle]
 #[cfg(feature = "cbinding")]
 pub extern "C" fn obs_bit_terms(obs: &mut SparseObservable) -> *mut BitTerm {
-    &mut { obs.bit_terms_mut()[0] }
+    &mut obs.bit_terms_mut()[0]
 }
 
 /// @ingroup SparseObservable
@@ -430,167 +406,18 @@ pub extern "C" fn obs_print(observable: &SparseObservable) {
     println!("{:?}", observable);
 }
 
-/// @ingroup SparseTerm
-/// Deallocate the term.
-///
-/// The term is **not** automatically deallocated if the observable it
-/// is coming from is freed.
-///
-/// @param term A pointer to the ``SparseTerm`` to deallocate.
-///
-/// Example:
-///
-///     SparseObservable *obs = obs_identity(100);
-///     SparseTerm *term = obs_term(obs, 0);
-///
-///     obs_free(obs);  // term is still allocated!
-///     obsterm_free(term);
-///
 #[no_mangle]
 #[cfg(feature = "cbinding")]
-pub extern "C" fn obsterm_free(term: &mut SparseTerm) {
-    unsafe {
-        let _ = Box::from_raw(term);
-    }
-}
-
-/// @ingroup SparseTerm
-/// Print a sparse term.
-///
-/// @param term A pointer to the ``SparseTerm`` to print.
-///
-/// Example:
-///
-///     SparseObservable *obs = obs_identity(100);
-///     SparseTerm *term = obs_term(obs, 0);
-///     obsterm_print(term);
-///
-#[no_mangle]
-#[cfg(feature = "cbinding")]
-pub extern "C" fn obsterm_print(term: &SparseTerm) {
-    println!("{:?}", term);
-}
-
-/// @ingroup SparseTerm
-/// Get the coefficient of a sparse term.
-///
-/// @param term A pointer to the ``SparseTerm`` whose coefficient is returned.
-///
-/// @return The complex coefficient of the sparse term.
-///
-/// Example:
-///
-///     SparseObservable *obs = obs_identity(100);
-///     SparseTerm *term = obs_term(obs, 0);
-///     complex double coeff = obsterm_coeff(term);
-///
-#[no_mangle]
-#[cfg(feature = "cbinding")]
-pub extern "C" fn obsterm_coeff(term: &SparseTerm) -> Complex64 {
-    term.coeff()
-}
-
-/// @ingroup SparseTerm
-/// Get the number of qubits the sparse term is defined on.
-///
-/// @param term A pointer to the ``SparseTerm`` whose number of qubits is returned.
-///
-/// @return The number of qubits the sparse term is defined on.
-///
-/// Example:
-///
-///     SparseObservable *obs = obs_identity(100);
-///     SparseTerm *term = obs_term(obs, 0);
-///     uint32_t num_qubits = obsterm_num_qubits(term);
-///
-#[no_mangle]
-#[cfg(feature = "cbinding")]
-pub extern "C" fn obsterm_num_qubits(term: &SparseTerm) -> u32 {
-    term.num_qubits()
-}
-
-/// @ingroup SparseTerm
-/// Get the number of non-identity (nni) Paulis in the sparse term.
-///
-/// @param term A pointer to the ``SparseTerm``.
-///
-/// @return The number of non-identity Paulis.
-///
-/// Example:
-///
-///     SparseObservable *obs = obs_identity(100);
-///     SparseTerm *term = obs_term(obs, 0);
-///     uint32_t nni = obsterm_nni(term);
-///
-#[no_mangle]
-#[cfg(feature = "cbinding")]
-pub extern "C" fn obsterm_nni(term: &SparseTerm) -> u32 {
-    // the length can be at most equal to the number of qubits, thus u32 is enough
-    term.indices().len() as u32
-}
-
-/// @ingroup SparseTerm
-/// Get the number of indices/bit terms inside the term.
-///
-/// This can be used to read all indices and bit terms.
-///
-/// @param term A pointer to the ``SparseTerm``.
-///
-/// @return The number of indices/bit terms.
-///
-/// Example:
-///
-///     SparseObservable *obs = obs_identity(100);
-///     SparseTerm *term = obs_term(obs, 0);
-///     uint32_t nni = obsterm_nni(term);
-///
-#[no_mangle]
-#[cfg(feature = "cbinding")]
-pub extern "C" fn obsterm_len(term: &SparseTerm) -> u64 {
-    term.indices().len() as u64
-}
-
-/// @ingroup SparseTerm
-/// Get a pointer to the indices of the term.
-///
-/// @param term A pointer to the ``SparseTerm``.
-///
-/// @return A pointer to the first element of the indices.
-///
-/// Example:
-///
-///     SparseObservable *obs = obs_identity(100);
-///     SparseTerm *term = obs_term(obs, 0);
-///     uint32_t nni = obsterm_nni(term);
-///
-#[no_mangle]
-#[cfg(feature = "cbinding")]
-pub extern "C" fn obsterm_indices(term: &SparseTerm) -> *const u32 {
-    &term.indices()[0]
-}
-
-/// @ingroup SparseTerm
-/// Get a pointer to the bits of the term.
-///
-/// @param term A pointer to the ``SparseTerm``.
-///
-/// @return A pointer to the first element of the bit terms.
-///
-/// Example:
-///
-///     SparseObservable *obs = obs_identity(100);
-///     SparseTerm *term = obs_term(obs, 0);
-///     uint32_t nni = obsterm_nni(term);
-///
-#[no_mangle]
-#[cfg(feature = "cbinding")]
-pub extern "C" fn obsterm_bits(term: &SparseTerm) -> *const BitTerm {
-    &term.bit_terms()[0]
-}
-
-#[no_mangle]
-#[cfg(feature = "cbinding")]
-pub extern "C" fn obstermview_print(view: &CSparseTermView) {
+pub extern "C" fn obstermview_print(view: &CSparseTerm) {
     let rust_view: SparseTermView = view.try_into().unwrap();
     println!("{:?}", rust_view);
+}
+
+#[no_mangle]
+#[cfg(feature = "cbinding")]
+pub extern "C" fn bitterm_label(bit: &BitTerm) -> u32 {
+    bit.py_label()
+        .chars()
+        .next()
+        .expect("Label has exactly one character") as u32
 }
