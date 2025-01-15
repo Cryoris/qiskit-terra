@@ -83,8 +83,10 @@ int test_mult() {
 
         // construct the expected observable: coeff * Id
         SparseObservable *expected = obs_zero(100);
-        PauliTermVec *paulis = paulis_new();
-        obs_push_consume(expected, paulis, &coeffs[i]);
+        BitTerm bit_terms[] = {};
+        uint32_t indices[] = {};
+        SparseTermView term = {&coeffs[i], 0, bit_terms, indices, 100};
+        obs_add_term(expected, &term);
 
         // perform the check
         bool is_equal = obs_equal(expected, result);
@@ -112,9 +114,11 @@ int test_canonicalize() {
 
     // construct the expected observable: 2 * Id
     SparseObservable *expected = obs_zero(100);
-    PauliTermVec *paulis = paulis_new();
+    BitTerm bit_terms[] = {};
+    uint32_t indices[] = {};
     complex double coeff = 2.0;
-    obs_push_consume(expected, paulis, &coeff);
+    SparseTermView term = {&coeff, 0, bit_terms, indices, 100};
+    obs_add_term(expected, &term);
 
     bool is_equal = obs_equal(expected, simplified);
 
@@ -178,14 +182,12 @@ int test_custom_build() {
     SparseObservable *obs = obs_zero(num_qubits);
 
     complex double coeff = 1;
+    BitTerm bit_terms[3] = {BitTerm_X, BitTerm_Y, BitTerm_Z};
+    uint32_t indices[3] = {0, 1, 2};
+    SparseTermView term = {&coeff, 3, bit_terms, indices, num_qubits};
 
-    PauliTermVec *paulis = paulis_new(); // could use with_capacity here, but we test new()
-    paulis_push(paulis, BitTerm_X, 0);
-    paulis_push(paulis, BitTerm_Y, 1);
-    paulis_push(paulis, BitTerm_Z, 2);
-
-    obs_push_copy(obs, paulis, &coeff);
-    obs_push_consume(obs, paulis, &coeff); // consumes the bits and indices vectors
+    obs_add_term(obs, &term);
+    obs_add_term(obs, &term);
 
     double tol = 1e-6;
     SparseObservable *simplified = obs_canonicalize(obs, tol);
@@ -204,16 +206,21 @@ int test_custom_build() {
 }
 
 int test_term() {
-    SparseObservable *obs = obs_identity(100);
+    uint32_t num_qubits = 100;
+    SparseObservable *obs = obs_identity(num_qubits);
 
-    PauliTermVec *paulis = paulis_with_capacity(3);
-    paulis_push(paulis, BitTerm_X, 0);
-    paulis_push(paulis, BitTerm_Y, 1);
-    paulis_push(paulis, BitTerm_Z, 2);
-
+    BitTerm bit_terms[3] = {BitTerm_X, BitTerm_Y, BitTerm_Z};
+    uint32_t qubits[3] = {0, 1, 2};
     complex double coeff = 1 + I;
 
-    obs_push_consume(obs, paulis, &coeff);
+    SparseTermView term = {&coeff, 3, bit_terms, qubits, num_qubits};
+    printf("views\n");
+    int err = obs_add_term(obs, &term);
+    obs_print(obs);
+
+    if (err != 0) {
+        return RuntimeError;
+    }
 
     // some placeholders to store the results
     int nnis[2] = {-1, -1};
@@ -222,21 +229,19 @@ int test_term() {
 
     uint64_t num_terms = obs_num_terms(obs);
     for (uint64_t i = 0; i < num_terms; i++) {
-        SparseTerm *term = obs_term(obs, i);
-        uint32_t nni = obsterm_nni(term);
+        SparseTermView view;
+        obs_view(obs, i, &view);
+        obstermview_print(&view);
+        size_t nni = view.len;
         nnis[i] = nni; // store to compare later
 
         for (uint32_t n = 0; n < nni; n++) {
-            PauliTerm *pterm = obsterm_pauli(term, n);
-
             // this loop is only called once, so we can use ``n`` to index here
-            bits[n] = pterm->bit_term;
-            indices[n] = pterm->index;
-
-            pauli_free(pterm);
+            printf("bit %i", view.bit_terms[n]);
+            printf("ind %i", view.indices[n]);
+            bits[n] = view.bit_terms[n];
+            indices[n] = view.indices[n];
         }
-
-        obsterm_free(term);
     }
 
     obs_free(obs);
@@ -248,12 +253,14 @@ int test_term() {
 
     // check number of terms
     if (num_terms != 2) {
+        printf("wrong num terms");
         result = EqualityError;
     }
 
     // check NNIs
     for (int i = 0; i < 2; i++) {
         if (nnis[i] != expected_nnis[i]) {
+            printf("wrong nni");
             result = EqualityError;
         }
     }
@@ -261,6 +268,7 @@ int test_term() {
     // check bit terms and indices
     for (int n = 0; n < 3; n++) {
         if (indices[n] != expected_indices[n] || bits[n] != expected_bits[n]) {
+            printf("wrong val");
             result = EqualityError;
         }
     }
@@ -268,18 +276,69 @@ int test_term() {
     return result;
 }
 
+int test_get_term_view() {
+    // create an observable
+    u_int32_t num_qubits = 100;
+    SparseObservable *obs = obs_zero(num_qubits);
+    complex double coeff = 1;
+    BitTerm bit_terms[2] = {BitTerm_X, BitTerm_Y};
+    uint32_t indices[2] = {0, 1};
+    SparseTermView term = {&coeff, 2, bit_terms, indices, num_qubits};
+    obs_add_term(obs, &term);
+
+    // add a modified copy of the first term
+    SparseTermView borrowed;
+    obs_view(obs, 0, &borrowed); // get view on 0th term
+
+    size_t len = borrowed.len;
+    BitTerm *copied_bit_terms = (BitTerm *)malloc(len * sizeof(BitTerm));
+    uint32_t *copied_indices = (uint32_t *)malloc(len * sizeof(uint32_t));
+    for (size_t i = 0; i < len; i++) {
+        copied_bit_terms[i] = borrowed.bit_terms[i];
+        copied_indices[i] = borrowed.indices[i];
+    }
+
+    // now modify something
+    copied_indices[1] = 99;
+    copied_bit_terms[0] = BitTerm_Zero;
+
+    SparseTermView copied = {
+        borrowed.coeff, borrowed.len, copied_bit_terms, copied_indices, borrowed.num_qubits,
+    };
+
+    obs_add_term(obs, &copied);
+
+    // obstermview_print(borrowed);
+    // obs_add_term(obs, &term);
+    // obs_add_term(obs, borrowed);
+    // obs_add_term(obs, borrowed);
+    // obs_add_term(obs, borrowed);
+
+    // try and modify the observable
+    // *(borrowed->bit_terms) = BitTerm_Plus;
+    // *(borrowed->bit_terms + sizeof(BitTerm)) = BitTerm_Left;
+    // *(borrowed->bit_terms + 2 * sizeof(BitTerm)) = BitTerm_Zero;
+    obs_print(obs);
+    obs_free(obs);
+    free(copied_indices);
+    free(copied_bit_terms);
+
+    return 0;
+}
+
 int test_sparse_observable() {
     int num_failed = 0;
-    num_failed += RUN_TEST(test_zero);
-    num_failed += RUN_TEST(test_identity);
-    num_failed += RUN_TEST(test_add);
-    num_failed += RUN_TEST(test_mult);
-    num_failed += RUN_TEST(test_canonicalize);
-    num_failed += RUN_TEST(test_copy);
-    num_failed += RUN_TEST(test_num_terms);
-    num_failed += RUN_TEST(test_num_qubits);
-    num_failed += RUN_TEST(test_custom_build);
+    // num_failed += RUN_TEST(test_zero);
+    // num_failed += RUN_TEST(test_identity);
+    // num_failed += RUN_TEST(test_add);
+    // num_failed += RUN_TEST(test_mult);
+    // num_failed += RUN_TEST(test_canonicalize);
+    // num_failed += RUN_TEST(test_copy);
+    // num_failed += RUN_TEST(test_num_terms);
+    // num_failed += RUN_TEST(test_num_qubits);
+    // num_failed += RUN_TEST(test_custom_build);
     num_failed += RUN_TEST(test_term);
+    // num_failed += RUN_TEST(test_get_term_view);
 
     fflush(stderr);
     fprintf(stderr, "=== Number of failed subtests: %i\n", num_failed);

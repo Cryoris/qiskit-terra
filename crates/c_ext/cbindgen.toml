@@ -11,3 +11,6 @@ include = ["qiskit-accelerate"]
 
 [enum]
 prefix_with_name = true
+
+[export.rename]
+"CSparseTermView" = "SparseTermView"

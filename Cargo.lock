@@ -1306,6 +1306,7 @@ dependencies = [
  "cbindgen",
  "num-complex",
  "qiskit-accelerate",
+ "thiserror",
 ]
 
 [[package]]

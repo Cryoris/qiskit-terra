@@ -18,6 +18,7 @@
 enum TestResult {
     Ok,
     EqualityError,
+    RuntimeError,
 };
 
 // A macro for running a test function. This calls the run function below with
