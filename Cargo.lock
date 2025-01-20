@@ -1300,12 +1300,13 @@ dependencies = [
 ]
 
 [[package]]
-name = "qiskit-c-ext"
+name = "qiskit-cext"
 version = "2.0.0"
 dependencies = [
  "cbindgen",
  "num-complex",
  "qiskit-accelerate",
+ "thiserror",
 ]
 
 [[package]]

@@ -89,9 +89,9 @@ cformat:
 	sh tools/run_clang_format.sh
 
 # Build C API crate and header
-cbuild:
+cheader:
 	cargo build --release --no-default-features --features cbinding
-	cbindgen --crate qiskit-c-ext --output qiskit.h --lang C
+	cbindgen --crate qiskit-cext --output qiskit.h --lang C
 
 # Use ctest to run C API tests
 ctest: cbuild

@@ -10,5 +10,5 @@
 // copyright notice, and modified files need to carry a notice indicating
 // that they have been altered from the originals.
 
-pub mod bit_term;
+pub mod exit_codes;
 pub mod sparse_observable;
