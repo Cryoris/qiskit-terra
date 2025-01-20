@@ -10,19 +10,9 @@
 // copyright notice, and modified files need to carry a notice indicating
 // that they have been altered from the originals.
 
-use crate::exit_codes::ExitCode;
+use crate::exit_codes::{CInputError, ExitCode};
 use num_complex::Complex64;
 use qiskit_accelerate::sparse_observable::{BitTerm, SparseObservable, SparseTermView};
-use thiserror::Error;
-
-/// Errors related to C input.
-#[derive(Error, Debug)]
-pub enum CInputError {
-    #[error("Unexpected null pointer.")]
-    NullPointerError,
-    #[error("Non-aligned memory.")]
-    AlignmentError,
-}
 
 /// @ingroup SparseTerm
 /// A term in a [SparseObservable].
@@ -72,11 +62,11 @@ impl TryFrom<&CSparseTerm> for SparseTermView<'_> {
 ///
 /// Example:
 ///
-///     SparseObservable *zero = obs_zero(100);
+///     SparseObservable *zero = qk_obs_zero(100);
 ///
 #[no_mangle]
 #[cfg(feature = "cbinding")]
-pub extern "C" fn obs_zero(num_qubits: u32) -> *mut SparseObservable {
+pub extern "C" fn qk_obs_zero(num_qubits: u32) -> *mut SparseObservable {
     let obs = SparseObservable::zero(num_qubits);
     Box::into_raw(Box::new(obs))
 }
@@ -90,31 +80,28 @@ pub extern "C" fn obs_zero(num_qubits: u32) -> *mut SparseObservable {
 ///
 /// Example:
 ///
-///     SparseObservable *identity = obs_identity(100);
+///     SparseObservable *identity = qk_obs_identity(100);
 ///
 #[no_mangle]
 #[cfg(feature = "cbinding")]
-pub extern "C" fn obs_identity(num_qubits: u32) -> *mut SparseObservable {
+pub extern "C" fn qk_obs_identity(num_qubits: u32) -> *mut SparseObservable {
     let obs = SparseObservable::identity(num_qubits);
     Box::into_raw(Box::new(obs))
 }
 
 /// @ingroup SparseObservable
-/// Deallocate the observable.
-///
-/// Memory deallocation is user responsibility. Every constructed observable
-/// must be deallocated manually to avoid memory leakage.
+/// Free the observable.
 ///
 /// @param obs A pointer to the observable to free.
 ///
 /// Example:
 ///
-///     SparseObservable *obs = obs_zero(100);
-///     obs_free(obs);
+///     SparseObservable *obs = qk_obs_zero(100);
+///     qk_obs_free(obs);
 ///
 #[no_mangle]
 #[cfg(feature = "cbinding")]
-pub extern "C" fn obs_free(obs: &mut SparseObservable) {
+pub extern "C" fn qk_obs_free(obs: &mut SparseObservable) {
     unsafe {
         let _ = Box::from_raw(obs);
     }
@@ -131,18 +118,18 @@ pub extern "C" fn obs_free(obs: &mut SparseObservable) {
 /// Example:
 ///
 ///     uint32_t num_qubits = 100;
-///     SparseObservable *obs = obs_zero(num_qubits);
+///     SparseObservable *obs = qk_obs_zero(num_qubits);
 ///
 ///     complex double coeff = 1;
 ///     BitTerm bit_terms[3] = {BitTerm_X, BitTerm_Y, BitTerm_Z};
 ///     uint32_t indices[3] = {0, 1, 2};
 ///     SparseTerm term = {&coeff, 3, bit_terms, indices, num_qubits};
 ///
-///     obs_add_term(obs, &term);
+///     int exit_code = qk_obs_add_term(obs, &term);
 ///
 #[no_mangle]
 #[cfg(feature = "cbinding")]
-pub extern "C" fn obs_add_term(obs: &mut SparseObservable, cterm: &CSparseTerm) -> ExitCode {
+pub extern "C" fn qk_obs_add_term(obs: &mut SparseObservable, cterm: &CSparseTerm) -> ExitCode {
     let view = match cterm.try_into() {
         Ok(view) => view,
         Err(err) => return ExitCode::from(err),
@@ -165,15 +152,15 @@ pub extern "C" fn obs_add_term(obs: &mut SparseObservable, cterm: &CSparseTerm) 
 ///
 /// Example:
 ///
-///     SparseObservable *obs = obs_identity(100);
+///     SparseObservable *obs = qk_obs_identity(100);
 ///     SparseTerm term;
-///     obs_term(obs, 0, &term);
+///     int exit_code = qk_obs_term(obs, 0, &term);
 ///     // out-of-bounds indices return an error code
-///     // int error = obs_term(obs, 12, &term);
+///     // int error = qk_obs_term(obs, 12, &term);
 ///
 #[no_mangle]
 #[cfg(feature = "cbinding")]
-pub extern "C" fn obs_term(
+pub extern "C" fn qk_obs_term(
     obs: &mut SparseObservable,
     index: u64,
     out: &mut CSparseTerm,
@@ -195,6 +182,60 @@ pub extern "C" fn obs_term(
 }
 
 /// @ingroup SparseObservable
+/// Get the number of terms in the observable.
+///
+/// @param observable A pointer to the observable.
+///
+/// @return The number of terms in the observable.
+///
+/// Example:
+///
+///     SparseObservable *obs = qk_obs_identity(100);
+///     uint64_t num_terms = qk_obs_num_terms(obs);  // num_terms==1
+///
+#[no_mangle]
+#[cfg(feature = "cbinding")]
+pub extern "C" fn qk_obs_num_terms(observable: &SparseObservable) -> u64 {
+    observable.num_terms() as u64
+}
+
+/// @ingroup SparseObservable
+/// Get the number of qubits the observable is defined on.
+///
+/// @param observable A pointer to the observable.
+///
+/// @return The number of qubits the observable is defined on.
+///
+/// Example:
+///
+///     SparseObservable *obs = qk_obs_identity(100);
+///     uint32_t num_qubits = qk_obs_num_qubits(obs);  // num_qubits==100
+///
+#[no_mangle]
+#[cfg(feature = "cbinding")]
+pub extern "C" fn qk_obs_num_qubits(observable: &SparseObservable) -> u32 {
+    observable.num_qubits()
+}
+
+/// @ingroup SparseObservable
+/// Get the number of bit terms/indices in the observable.
+///
+/// @param observable A pointer to the observable.
+///
+/// @return The number of terms in the observable.
+///
+/// Example:
+///
+///     SparseObservable *obs = qk_obs_identity(100);
+///     uint64_t len = qk_obs_len(obs);  // len==0, as there are no non-trivial bit terms
+///
+#[no_mangle]
+#[cfg(feature = "cbinding")]
+pub extern "C" fn qk_obs_len(observable: &SparseObservable) -> u64 {
+    observable.bit_terms().len() as u64
+}
+
+/// @ingroup SparseObservable
 /// Get a pointer to the coefficients.
 ///
 /// This can be used to read and modify the observable's coefficients.
@@ -204,14 +245,18 @@ pub extern "C" fn obs_term(
 /// @return A pointer to the coefficients.
 ///
 /// Example:
+///     
+///     SparseObservable *obs = qk_obs_identity(100);
+///     uint64_t num_terms = qk_obs_num_terms(obs);
+///     complex double *coeffs = qk_obs_coeffs(obs);
 ///
-///     SparseObservable *iden = obs_identity(100);
-///     complex double *coeffs = obs_coeffs(obs);
-///     assert coeffs[0] == 1;
+///     for (uint64_t i = 0; i < num_terms; i++) {
+///         printf("%f + i%f\n", creal(coeffs[i]), cimag(coeffs[i]));
+///     }
 ///
 #[no_mangle]
 #[cfg(feature = "cbinding")]
-pub extern "C" fn obs_coeffs(obs: &mut SparseObservable) -> *mut Complex64 {
+pub extern "C" fn qk_obs_coeffs(obs: &mut SparseObservable) -> *mut Complex64 {
     &mut obs.coeffs_mut()[0]
 }
 
@@ -223,12 +268,66 @@ pub extern "C" fn obs_coeffs(obs: &mut SparseObservable) -> *mut Complex64 {
 /// @param obs A pointer to the observable.
 ///
 /// @return A pointer to the indices.
+///
+/// Example:
+///
+///     uint32_t num_qubits = 100;
+///     SparseObservable *obs = qk_obs_zero(num_qubits);
+///
+///     complex double coeff = 1;
+///     BitTerm bit_terms[3] = {BitTerm_X, BitTerm_Y, BitTerm_Z};
+///     uint32_t indices[3] = {0, 1, 2};
+///     SparseTerm term = {&coeff, 3, bit_terms, indices, num_qubits};
+///     qk_obs_add_term(obs, &term);
+///
+///     uint64_t len = qk_obs_len(obs);
+///     uint32_t *indices = qk_obs_indices(obs);
+///
+///     for (uint64_t i = 0; i < len; i++) {
+///         printf("index %i: %i\n", i, indices[i]);
+///     }
+///
 #[no_mangle]
 #[cfg(feature = "cbinding")]
-pub extern "C" fn obs_indices(obs: &mut SparseObservable) -> *mut u32 {
+pub extern "C" fn qk_obs_indices(obs: &mut SparseObservable) -> *mut u32 {
     // this is unsafe as we can no longer ensure the indices are within
     // range of the observable's number of qubits
     unsafe { &mut obs.indices_mut()[0] }
+}
+
+/// @ingroup SparseObservable
+/// Get a pointer to the term boundaries.
+///
+/// This can be used to read and modify the observable's term boundaries.
+///
+/// @param obs A pointer to the observable.
+///
+/// @return A pointer to the boundaries.
+///
+/// Example:
+///
+///     uint32_t num_qubits = 100;
+///     SparseObservable *obs = qk_obs_zero(num_qubits);
+///
+///     complex double coeff = 1;
+///     BitTerm bit_terms[3] = {BitTerm_X, BitTerm_Y, BitTerm_Z};
+///     uint32_t indices[3] = {0, 1, 2};
+///     SparseTerm term = {&coeff, 3, bit_terms, indices, num_qubits};
+///     qk_obs_add_term(obs, &term);
+///
+///     uint64_t len = qk_obs_len(obs);
+///     uint32_t *boundaries = qk_obs_boundaries(obs);
+///
+///     for (uint64_t i = 0; i < len + 1; i++) {
+///         printf("boundary %i: %i\n", i, boundaries[i]);
+///     }
+///
+#[no_mangle]
+#[cfg(feature = "cbinding")]
+pub extern "C" fn qk_obs_boundaries(obs: &mut SparseObservable) -> *mut usize {
+    // this is unsafe as modifying the boundaries can leave the observable
+    // in an incoherent state
+    unsafe { &mut obs.boundaries_mut()[0] }
 }
 
 /// @ingroup SparseObservable
@@ -239,9 +338,28 @@ pub extern "C" fn obs_indices(obs: &mut SparseObservable) -> *mut u32 {
 /// @param obs A pointer to the observable.
 ///
 /// @return A pointer to the bit terms.
+///
+/// Example:
+///
+///     uint32_t num_qubits = 100;
+///     SparseObservable *obs = qk_obs_zero(num_qubits);
+///
+///     complex double coeff = 1;
+///     BitTerm bit_terms[3] = {BitTerm_X, BitTerm_Y, BitTerm_Z};
+///     uint32_t indices[3] = {0, 1, 2};
+///     SparseTerm term = {&coeff, 3, bit_terms, indices, num_qubits};
+///     qk_obs_add_term(obs, &term);
+///
+///     uint64_t len = qk_obs_len(obs);
+///     BitTerm *bits = qk_obs_bit_terms(obs);
+///
+///     for (uint64_t i = 0; i < len; i++) {
+///         printf("bit term %i: %i\n", i, bits[i]);
+///     }
+///
 #[no_mangle]
 #[cfg(feature = "cbinding")]
-pub extern "C" fn obs_bit_terms(obs: &mut SparseObservable) -> *mut BitTerm {
+pub extern "C" fn qk_obs_bit_terms(obs: &mut SparseObservable) -> *mut BitTerm {
     &mut obs.bit_terms_mut()[0]
 }
 
@@ -253,11 +371,15 @@ pub extern "C" fn obs_bit_terms(obs: &mut SparseObservable) -> *mut BitTerm {
 ///
 /// Example:
 ///
-///     SparseObservable *obs = obs_identity(100);
-///     SparseObservable *result = obs_multiply(obs, 2);
+///     SparseObservable *obs = qk_obs_identity(100);
+///     SparseObservable *result = qk_obs_multiply(obs, 2);
+///
 #[no_mangle]
 #[cfg(feature = "cbinding")]
-pub extern "C" fn obs_multiply(obs: &SparseObservable, coeff: &Complex64) -> *mut SparseObservable {
+pub extern "C" fn qk_obs_multiply(
+    obs: &SparseObservable,
+    coeff: &Complex64,
+) -> *mut SparseObservable {
     let result = obs * (*coeff);
     Box::into_raw(Box::new(result))
 }
@@ -272,13 +394,13 @@ pub extern "C" fn obs_multiply(obs: &SparseObservable, coeff: &Complex64) -> *mu
 ///
 /// Example:
 ///
-///     SparseObservable *left = obs_identity(100);
-///     SparseObservable *right = obs_zero(100);
-///     SparseObservable *result = obs_add(left, right);
+///     SparseObservable *left = qk_obs_identity(100);
+///     SparseObservable *right = qk_obs_zero(100);
+///     SparseObservable *result = qk_obs_add(left, right);
 ///
 #[no_mangle]
 #[cfg(feature = "cbinding")]
-pub extern "C" fn obs_add(
+pub extern "C" fn qk_obs_add(
     left: &SparseObservable,
     right: &SparseObservable,
 ) -> *mut SparseObservable {
@@ -296,15 +418,15 @@ pub extern "C" fn obs_add(
 ///
 /// Example:
 ///
-///     SparseObservable *iden = obs_identity(100);
-///     SparseObservable *two = obs_add(iden, iden);
+///     SparseObservable *iden = qk_obs_identity(100);
+///     SparseObservable *two = qk_obs_add(iden, iden);
 ///
 ///     double tol = 1e-6;
-///     SparseObservable *canonical = obs_canonicalize(two);
+///     SparseObservable *canonical = qk_obs_canonicalize(two);
 ///
 #[no_mangle]
 #[cfg(feature = "cbinding")]
-pub extern "C" fn obs_canonicalize(
+pub extern "C" fn qk_obs_canonicalize(
     obs: &SparseObservable,
     tol: f64, // no optional arguments in C -- welcome to the ancient past
 ) -> *mut SparseObservable {
@@ -321,12 +443,12 @@ pub extern "C" fn obs_canonicalize(
 ///
 /// Example:
 ///
-///     SparseObservable *original = obs_identity(100);
-///     SparseObservable *copied = obs_copy(original);
+///     SparseObservable *original = qk_obs_identity(100);
+///     SparseObservable *copied = qk_obs_copy(original);
 ///
 #[no_mangle]
 #[cfg(feature = "cbinding")]
-pub extern "C" fn obs_copy(obs: &SparseObservable) -> *mut SparseObservable {
+pub extern "C" fn qk_obs_copy(obs: &SparseObservable) -> *mut SparseObservable {
     let copied = obs.clone();
     Box::into_raw(Box::new(copied))
 }
@@ -337,86 +459,83 @@ pub extern "C" fn obs_copy(obs: &SparseObservable) -> *mut SparseObservable {
 /// Note that this does not compare mathematical equality, but data equality. This means
 /// that two observables might represent the same observable but not compare as equal.
 ///
-/// @param observable A pointer to one observable.
+/// @param obs A pointer to one observable.
 /// @param other A pointer to another observable.
 ///
 /// @return ``true`` if the observables are equal, ``false`` otherwise.
 ///
 /// Example:
 ///
-///     SparseObservable *observable = obs_identity(100);
-///     SparseObservable *other = obs_identity(100);
-///     bool are_equal = obs_equal(observable, other);
+///     SparseObservable *observable = qk_obs_identity(100);
+///     SparseObservable *other = qk_obs_identity(100);
+///     bool are_equal = qk_obs_equal(observable, other);
 ///
 #[no_mangle]
 #[cfg(feature = "cbinding")]
-pub extern "C" fn obs_equal(observable: &SparseObservable, other: &SparseObservable) -> bool {
-    observable.eq(other)
-}
-
-/// @ingroup SparseObservable
-/// Get the number of terms in the observable.
-///
-/// @param observable A pointer to the observable.
-///
-/// @return The number of terms in the observable.
-///
-/// Example:
-///
-///     SparseObservable *obs = obs_identity(100);
-///     uint64_t num_terms = obs_num_terms(obs);  // num_terms==1
-///
-#[no_mangle]
-#[cfg(feature = "cbinding")]
-pub extern "C" fn obs_num_terms(observable: &SparseObservable) -> u64 {
-    observable.num_terms() as u64
-}
-
-/// @ingroup SparseObservable
-/// Get the number of qubits the observable is defined on.
-///
-/// @param observable A pointer to the observable.
-///
-/// @return The number of qubits the observable is defined on.
-///
-/// Example:
-///
-///     SparseObservable *obs = obs_identity(100);
-///     uint32_t num_qubits = obs_num_qubits(obs);  // 100
-///
-#[no_mangle]
-#[cfg(feature = "cbinding")]
-pub extern "C" fn obs_num_qubits(observable: &SparseObservable) -> u32 {
-    observable.num_qubits()
+pub extern "C" fn qk_obs_equal(obs: &SparseObservable, other: &SparseObservable) -> bool {
+    obs.eq(other)
 }
 
 /// @ingroup SparseObservable
 /// Print the observable.
 ///
-/// @param term A pointer to the ``SparseObservable`` to print.
+/// @param obs A pointer to the ``SparseObservable`` to print.
 ///
 /// Example:
 ///
-///     SparseObservable *obs = obs_identity(100);
-///     obs_print(obs);
+///     SparseObservable *obs = qk_obs_identity(100);
+///     qk_obs_print(obs);
 ///
 #[no_mangle]
 #[cfg(feature = "cbinding")]
-pub extern "C" fn obs_print(observable: &SparseObservable) {
-    println!("{:?}", observable);
+pub extern "C" fn qk_obs_print(obs: &SparseObservable) {
+    println!("{:?}", obs);
 }
 
+/// @ingroup SparseTerm
+/// Print the sparse term.
+///
+/// @param term A pointer to the term.
+///
+/// @return The function exit code. This is ``>0`` if reading the term failed.
+///
+/// Example:
+///
+///     SparseObservable *obs = qk_obs_identity(100);
+///     SparseTerm term;
+///     qk_obs_term(obs, &term, 0);
+///     int exit_code = qk_obsterm_print(&term);
+///
 #[no_mangle]
 #[cfg(feature = "cbinding")]
-pub extern "C" fn obstermview_print(view: &CSparseTerm) {
-    let rust_view: SparseTermView = view.try_into().unwrap();
+pub extern "C" fn qk_obsterm_print(view: &CSparseTerm) -> ExitCode {
+    let rust_view: SparseTermView = match view.try_into() {
+        Ok(view) => view,
+        Err(err) => return ExitCode::from(err),
+    };
+
     println!("{:?}", rust_view);
+    ExitCode::Success
 }
 
+/// @ingroup BitTerm
+/// Get the label for a bit term.
+///
+/// @param bit The bit term.
+///
+/// @return The label as unsigned integer.
+///
+/// Example:
+///     
+///     BitTerm bit_term = BitTerm_Y;
+///     // cast the uint32_t to char
+///     char label = qk_bitterm_label(&bit_term);
+///
 #[no_mangle]
 #[cfg(feature = "cbinding")]
-pub extern "C" fn bitterm_label(bit: &BitTerm) -> u32 {
-    bit.py_label()
+pub extern "C" fn qk_bitterm_label(bit_term: &BitTerm) -> u32 {
+    bit_term
+        .py_label()
         .chars()
         .next()
         .expect("Label has exactly one character") as u32

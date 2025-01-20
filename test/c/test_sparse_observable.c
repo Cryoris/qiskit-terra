@@ -19,10 +19,10 @@
  * Test the zero constructor.
  */
 int test_zero() {
-    SparseObservable *obs = obs_zero(100);
-    uint64_t num_terms = obs_num_terms(obs);
-    uint32_t num_qubits = obs_num_qubits(obs);
-    obs_free(obs);
+    SparseObservable *obs = qk_obs_zero(100);
+    uint64_t num_terms = qk_obs_num_terms(obs);
+    uint32_t num_qubits = qk_obs_num_qubits(obs);
+    qk_obs_free(obs);
 
     if (num_terms != 0 || num_qubits != 100) {
         return EqualityError;
@@ -34,10 +34,10 @@ int test_zero() {
  * Test the identity constructor.
  */
 int test_identity() {
-    SparseObservable *obs = obs_identity(100);
-    uint64_t num_terms = obs_num_terms(obs);
-    uint32_t num_qubits = obs_num_qubits(obs);
-    obs_free(obs);
+    SparseObservable *obs = qk_obs_identity(100);
+    uint64_t num_terms = qk_obs_num_terms(obs);
+    uint32_t num_qubits = qk_obs_num_qubits(obs);
+    qk_obs_free(obs);
 
     if (num_terms != 1 || num_qubits != 100) {
         return EqualityError;
@@ -49,13 +49,13 @@ int test_identity() {
  * Test copying an observable.
  */
 int test_copy() {
-    SparseObservable *obs = obs_identity(100);
-    SparseObservable *copied = obs_copy(obs);
+    SparseObservable *obs = qk_obs_identity(100);
+    SparseObservable *copied = qk_obs_copy(obs);
 
-    bool are_equal = obs_equal(obs, copied);
+    bool are_equal = qk_obs_equal(obs, copied);
 
-    obs_free(obs);
-    obs_free(copied);
+    qk_obs_free(obs);
+    qk_obs_free(copied);
 
     if (!are_equal) {
         return EqualityError;
@@ -68,15 +68,15 @@ int test_copy() {
  * Test adding two observables.
  */
 int test_add() {
-    SparseObservable *left = obs_identity(100);
-    SparseObservable *right = obs_identity(100);
-    SparseObservable *obs = obs_add(left, right);
+    SparseObservable *left = qk_obs_identity(100);
+    SparseObservable *right = qk_obs_identity(100);
+    SparseObservable *obs = qk_obs_add(left, right);
 
-    uint64_t num_terms = obs_num_terms(obs);
+    uint64_t num_terms = qk_obs_num_terms(obs);
 
-    obs_free(left);
-    obs_free(right);
-    obs_free(obs);
+    qk_obs_free(left);
+    qk_obs_free(right);
+    qk_obs_free(obs);
 
     if (num_terms != 2) {
         return EqualityError;
@@ -92,24 +92,24 @@ int test_mult() {
     complex double coeffs[3] = {2, 2 * I, 2 + 2 * I};
 
     for (int i = 0; i < 3; i++) {
-        SparseObservable *obs = obs_identity(100);
+        SparseObservable *obs = qk_obs_identity(100);
 
-        SparseObservable *result = obs_multiply(obs, &coeffs[i]);
+        SparseObservable *result = qk_obs_multiply(obs, &coeffs[i]);
 
         // construct the expected observable: coeff * Id
-        SparseObservable *expected = obs_zero(100);
+        SparseObservable *expected = qk_obs_zero(100);
         BitTerm bit_terms[] = {};
         uint32_t indices[] = {};
         SparseTerm term = {&coeffs[i], 0, bit_terms, indices, 100};
-        obs_add_term(expected, &term);
+        qk_obs_add_term(expected, &term);
 
         // perform the check
-        bool is_equal = obs_equal(expected, result);
+        bool is_equal = qk_obs_equal(expected, result);
 
         // deallocate before returning
-        obs_free(obs);
-        obs_free(result);
-        obs_free(expected);
+        qk_obs_free(obs);
+        qk_obs_free(result);
+        qk_obs_free(expected);
 
         if (!is_equal) {
             return EqualityError;
@@ -123,28 +123,28 @@ int test_mult() {
  * Test bringing an observable into canonical form.
  */
 int test_canonicalize() {
-    SparseObservable *left = obs_identity(100);
-    SparseObservable *right = obs_identity(100);
-    SparseObservable *obs = obs_add(left, right);
+    SparseObservable *left = qk_obs_identity(100);
+    SparseObservable *right = qk_obs_identity(100);
+    SparseObservable *obs = qk_obs_add(left, right);
 
     double tol = 1e-5;
-    SparseObservable *simplified = obs_canonicalize(obs, tol);
+    SparseObservable *simplified = qk_obs_canonicalize(obs, tol);
 
     // construct the expected observable: 2 * Id
-    SparseObservable *expected = obs_zero(100);
+    SparseObservable *expected = qk_obs_zero(100);
     BitTerm bit_terms[] = {};
     uint32_t indices[] = {};
     complex double coeff = 2.0;
     SparseTerm term = {&coeff, 0, bit_terms, indices, 100};
-    obs_add_term(expected, &term);
+    qk_obs_add_term(expected, &term);
 
-    bool is_equal = obs_equal(expected, simplified);
+    bool is_equal = qk_obs_equal(expected, simplified);
 
-    obs_free(obs);
-    obs_free(right);
-    obs_free(left);
-    obs_free(simplified);
-    obs_free(expected);
+    qk_obs_free(obs);
+    qk_obs_free(right);
+    qk_obs_free(left);
+    qk_obs_free(simplified);
+    qk_obs_free(expected);
 
     if (!is_equal) {
         return EqualityError;
@@ -160,19 +160,19 @@ int test_num_terms() {
     int result = Ok;
     uint64_t num_terms;
 
-    SparseObservable *zero = obs_zero(100);
-    num_terms = obs_num_terms(zero);
+    SparseObservable *zero = qk_obs_zero(100);
+    num_terms = qk_obs_num_terms(zero);
     if (num_terms != 0) {
         result = EqualityError;
     }
-    obs_free(zero);
+    qk_obs_free(zero);
 
-    SparseObservable *iden = obs_identity(100);
-    num_terms = obs_num_terms(iden);
+    SparseObservable *iden = qk_obs_identity(100);
+    num_terms = qk_obs_num_terms(iden);
     if (num_terms != 1) {
         result = EqualityError;
     }
-    obs_free(iden);
+    qk_obs_free(iden);
 
     return result;
 }
@@ -184,19 +184,19 @@ int test_num_qubits() {
     int result = Ok;
     uint32_t num_qubits;
 
-    SparseObservable *obs = obs_zero(1);
-    num_qubits = obs_num_qubits(obs);
+    SparseObservable *obs = qk_obs_zero(1);
+    num_qubits = qk_obs_num_qubits(obs);
     if (num_qubits != 1) {
         result = EqualityError;
     }
-    obs_free(obs);
+    qk_obs_free(obs);
 
-    SparseObservable *obs100 = obs_zero(100);
-    num_qubits = obs_num_qubits(obs100);
+    SparseObservable *obs100 = qk_obs_zero(100);
+    num_qubits = qk_obs_num_qubits(obs100);
     if (num_qubits != 100) {
         result = EqualityError;
     }
-    obs_free(obs100);
+    qk_obs_free(obs100);
 
     return result;
 }
@@ -206,24 +206,24 @@ int test_num_qubits() {
  */
 int test_custom_build() {
     u_int32_t num_qubits = 100;
-    SparseObservable *obs = obs_zero(num_qubits);
+    SparseObservable *obs = qk_obs_zero(num_qubits);
 
     complex double coeff = 1;
     BitTerm bit_terms[3] = {BitTerm_X, BitTerm_Y, BitTerm_Z};
     uint32_t indices[3] = {0, 1, 2};
     SparseTerm term = {&coeff, 3, bit_terms, indices, num_qubits};
 
-    obs_add_term(obs, &term);
-    obs_add_term(obs, &term);
+    qk_obs_add_term(obs, &term);
+    qk_obs_add_term(obs, &term);
 
     double tol = 1e-6;
-    SparseObservable *simplified = obs_canonicalize(obs, tol);
+    SparseObservable *simplified = qk_obs_canonicalize(obs, tol);
 
-    uint64_t num_terms = obs_num_terms(obs);
-    uint64_t num_terms_simplified = obs_num_terms(simplified);
+    uint64_t num_terms = qk_obs_num_terms(obs);
+    uint64_t num_terms_simplified = qk_obs_num_terms(simplified);
 
-    obs_free(obs);
-    obs_free(simplified);
+    qk_obs_free(obs);
+    qk_obs_free(simplified);
 
     if (num_terms != 2 || num_terms_simplified != 1) {
         return EqualityError;
@@ -237,14 +237,14 @@ int test_custom_build() {
  */
 int test_term() {
     uint32_t num_qubits = 100;
-    SparseObservable *obs = obs_identity(num_qubits);
+    SparseObservable *obs = qk_obs_identity(num_qubits);
 
     BitTerm bit_terms[3] = {BitTerm_X, BitTerm_Y, BitTerm_Z};
     uint32_t qubits[3] = {0, 1, 2};
     complex double coeff = 1 + I;
 
     SparseTerm term = {&coeff, 3, bit_terms, qubits, num_qubits};
-    int err = obs_add_term(obs, &term);
+    int err = qk_obs_add_term(obs, &term);
 
     if (err != 0) {
         return RuntimeError;
@@ -255,10 +255,10 @@ int test_term() {
     int bits[3] = {-1, -1, -1};
     int indices[3] = {-1, -1, -1};
 
-    uint64_t num_terms = obs_num_terms(obs);
+    uint64_t num_terms = qk_obs_num_terms(obs);
     for (uint64_t i = 0; i < num_terms; i++) {
         SparseTerm view;
-        obs_term(obs, i, &view);
+        qk_obs_term(obs, i, &view);
         size_t nni = view.len;
         nnis[i] = nni; // store to compare later
 
@@ -269,7 +269,7 @@ int test_term() {
         }
     }
 
-    obs_free(obs);
+    qk_obs_free(obs);
 
     int result = 0;
     int expected_nnis[2] = {0, 3};
@@ -304,19 +304,19 @@ int test_term() {
 int test_copy_term() {
     // create an observable with the term X0 Y1 Z2
     u_int32_t num_qubits = 100;
-    SparseObservable *obs = obs_zero(num_qubits);
+    SparseObservable *obs = qk_obs_zero(num_qubits);
 
     complex double coeff = 1;
     BitTerm bits[3] = {BitTerm_X, BitTerm_Y, BitTerm_Z};
     uint32_t indices[3] = {0, 1, 2};
 
     SparseTerm term = {&coeff, 3, bits, indices, num_qubits};
-    obs_add_term(obs, &term);
+    qk_obs_add_term(obs, &term);
 
-    // now we add a modified copy of the first term -- we use use obs_term(..., &borrowed) on
+    // now we add a modified copy of the first term -- we use use qk_obs_term(..., &borrowed) on
     // purpose here
     SparseTerm borrowed;
-    int error = obs_term(obs, 0, &borrowed); // get view on 0th term
+    int error = qk_obs_term(obs, 0, &borrowed); // get view on 0th term
     if (error > 0) {
         return RuntimeError;
     }
@@ -337,7 +337,7 @@ int test_copy_term() {
     SparseTerm copied = {
         &coeff2, borrowed.len, copied_bits, copied_indices, borrowed.num_qubits,
     };
-    obs_add_term(obs, &copied);
+    qk_obs_add_term(obs, &copied);
 
     free(copied_indices);
     free(copied_bits);
@@ -347,13 +347,13 @@ int test_copy_term() {
     uint32_t indices2[3] = {0, 99, 2};
     SparseTerm term2 = {&coeff2, 3, bits2, indices2, num_qubits};
 
-    SparseObservable *expected = obs_zero(num_qubits);
-    obs_add_term(expected, &term);
-    obs_add_term(expected, &term2);
+    SparseObservable *expected = qk_obs_zero(num_qubits);
+    qk_obs_add_term(expected, &term);
+    qk_obs_add_term(expected, &term2);
 
-    bool equal = obs_equal(expected, obs);
-    obs_free(obs);
-    obs_free(expected);
+    bool equal = qk_obs_equal(expected, obs);
+    qk_obs_free(obs);
+    qk_obs_free(expected);
 
     if (!equal) {
         return EqualityError;
@@ -367,18 +367,18 @@ int test_copy_term() {
 int test_inplace_mut() {
     // create an observable with the term X0 Y1 Z2
     u_int32_t num_qubits = 100;
-    SparseObservable *obs = obs_zero(num_qubits);
+    SparseObservable *obs = qk_obs_zero(num_qubits);
 
     complex double coeff = 1;
     BitTerm bits[3] = {BitTerm_X, BitTerm_Y, BitTerm_Z};
     uint32_t indices[3] = {0, 1, 2};
 
     SparseTerm term = {&coeff, 3, bits, indices, num_qubits};
-    obs_add_term(obs, &term);
+    qk_obs_add_term(obs, &term);
 
     // now we get the same term, referencing the observable data, and modify it
     SparseTerm borrowed;
-    int error = obs_term(obs, 0, &borrowed); // get view on 0th term
+    int error = qk_obs_term(obs, 0, &borrowed); // get view on 0th term
     if (error > 0) {
         return RuntimeError;
     }
@@ -387,18 +387,18 @@ int test_inplace_mut() {
     borrowed.bit_terms[2] = BitTerm_Zero;
 
     // compare to the expected observable
-    SparseObservable *expected = obs_zero(num_qubits);
+    SparseObservable *expected = qk_obs_zero(num_qubits);
 
     complex double new_coeff = -5 * I;
     BitTerm new_bits[3] = {BitTerm_X, BitTerm_Y, BitTerm_Zero};
     uint32_t new_indices[3] = {0, 1, 2};
 
     SparseTerm new_term = {&new_coeff, 3, new_bits, new_indices, num_qubits};
-    obs_add_term(expected, &new_term);
+    qk_obs_add_term(expected, &new_term);
 
-    bool equal = obs_equal(expected, obs);
-    obs_free(expected);
-    obs_free(obs);
+    bool equal = qk_obs_equal(expected, obs);
+    qk_obs_free(expected);
+    qk_obs_free(obs);
 
     if (!equal) {
         return EqualityError;
@@ -415,7 +415,7 @@ int test_bitterm_label() {
                        BitTerm_Right, BitTerm_Z,    BitTerm_Zero,  BitTerm_One};
 
     for (int i = 0; i < 9; i++) {
-        char label = bitterm_label(&bits[i]);
+        char label = qk_bitterm_label(&bits[i]);
         if (label != expected[i]) {
             return EqualityError;
         }
@@ -428,8 +428,8 @@ int test_bitterm_label() {
  * Test the coeffs access.
  */
 int test_coeffs() {
-    SparseObservable *obs = obs_identity(2);
-    complex double *coeffs = obs_coeffs(obs);
+    SparseObservable *obs = qk_obs_identity(2);
+    complex double *coeffs = qk_obs_coeffs(obs);
 
     // read the first coefficient
     complex double first = coeffs[0];
@@ -440,12 +440,12 @@ int test_coeffs() {
 
     // modify the coefficient by ref
     coeffs[0] = I;
-    complex double later = obs_coeffs(obs)[0];
+    complex double later = qk_obs_coeffs(obs)[0];
     if (later != I) {
         result = EqualityError;
     }
 
-    obs_free(obs);
+    qk_obs_free(obs);
     return result;
 }
 
@@ -459,10 +459,10 @@ int test_bit_terms() {
     complex double coeff = 1;
     SparseTerm term = {&coeff, 6, bits, indices, 10};
 
-    SparseObservable *obs = obs_zero(10);
-    obs_add_term(obs, &term);
+    SparseObservable *obs = qk_obs_zero(10);
+    qk_obs_add_term(obs, &term);
 
-    BitTerm *borrowed = obs_bit_terms(obs);
+    BitTerm *borrowed = qk_obs_bit_terms(obs);
 
     // test read access
     BitTerm element = borrowed[4];
@@ -473,12 +473,12 @@ int test_bit_terms() {
 
     // modify the element
     borrowed[4] = BitTerm_X;
-    BitTerm later = obs_bit_terms(obs)[4];
+    BitTerm later = qk_obs_bit_terms(obs)[4];
     if (later != BitTerm_X) {
         result = EqualityError;
     }
 
-    obs_free(obs);
+    qk_obs_free(obs);
     return result;
 }
 
@@ -492,10 +492,10 @@ int test_indices() {
     complex double coeff = 1;
     SparseTerm term = {&coeff, 6, bits, indices, 10};
 
-    SparseObservable *obs = obs_zero(10);
-    obs_add_term(obs, &term);
+    SparseObservable *obs = qk_obs_zero(10);
+    qk_obs_add_term(obs, &term);
 
-    uint32_t *borrowed = obs_indices(obs);
+    uint32_t *borrowed = qk_obs_indices(obs);
 
     // test read access
     uint32_t element = indices[2];
@@ -506,13 +506,43 @@ int test_indices() {
 
     // modify the element
     borrowed[0] = 0;
-    uint32_t later = obs_indices(obs)[0];
+    uint32_t later = qk_obs_indices(obs)[0];
     if (later != 0) {
         result = EqualityError;
     }
 
-    obs_free(obs);
+    qk_obs_free(obs);
     return result;
+}
+
+/**
+ * Test access to the term boundaries.
+ */
+int test_boundaries() {
+    uint32_t num_qubits = 100;
+    SparseObservable *obs = qk_obs_identity(num_qubits);
+
+    complex double coeff = 1;
+    BitTerm bit_terms[3] = {BitTerm_X, BitTerm_Y, BitTerm_Z};
+    uint32_t indices[3] = {0, 1, 2};
+    SparseTerm term = {&coeff, 3, bit_terms, indices, num_qubits};
+    qk_obs_add_term(obs, &term);
+
+    uint64_t num_terms = qk_obs_num_terms(obs);
+    size_t *boundaries = qk_obs_boundaries(obs);
+
+    // the identity term has 0 bits, the XYZ has 3, therefore the terms are defined as
+    // indices = [0, 1, 2]
+    // bit_terms = [X, Y, Z]
+    // boundaries = [0, 0, 3]
+    size_t expected[] = {0, 0, 3};
+
+    for (uint64_t i = 0; i < num_terms + 1; i++) {
+        if (boundaries[i] != expected[i]) {
+            return EqualityError;
+        }
+    }
+    return EXIT_SUCCESS;
 }
 
 int test_sparse_observable() {
@@ -533,6 +563,7 @@ int test_sparse_observable() {
     num_failed += RUN_TEST(test_coeffs);
     num_failed += RUN_TEST(test_bit_terms);
     num_failed += RUN_TEST(test_indices);
+    num_failed += RUN_TEST(test_boundaries);
 
     fflush(stderr);
     fprintf(stderr, "=== Number of failed subtests: %i\n", num_failed);
