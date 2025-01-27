@@ -23,7 +23,7 @@ use pyo3::{
     intern,
     prelude::*,
     sync::GILOnceCell,
-    types::{IntoPyDict, PyList, PyTuple, PyType},
+    types::{IntoPyDict, PyCapsule, PyList, PyTuple, PyType},
     IntoPyObjectExt, PyErr,
 };
 use std::{
@@ -1951,6 +1951,15 @@ impl PySparseObservable {
             "unknown input format for 'SparseObservable': {}",
             data.get_type().repr()?,
         )))
+    }
+
+    #[pyo3(signature = (data, /))]
+    #[staticmethod]
+    fn from_pycapsule(data: &Bound<PyCapsule>) -> PyResult<Self> {
+        let inner = unsafe { data.reference::<SparseObservable>() };
+        Ok(Self {
+            inner: Arc::new(RwLock::new(inner.clone())),
+        })
     }
 
     /// Get a copy of this observable.
