@@ -24,7 +24,7 @@ from qiskit.circuit.library import PauliEvolutionGate, HamiltonianGate
 from qiskit.synthesis import LieTrotter, SuzukiTrotter, MatrixExponential, QDrift
 from qiskit.synthesis.evolution.product_formula import reorder_paulis
 from qiskit.converters import circuit_to_dag
-from qiskit.quantum_info import Operator, SparsePauliOp, Pauli, Statevector
+from qiskit.quantum_info import Operator, SparsePauliOp, Pauli, Statevector, SparseObservable
 from qiskit.transpiler.passes import HLSConfig, HighLevelSynthesis
 from test import QiskitTestCase  # pylint: disable=wrong-import-order
 
@@ -441,32 +441,6 @@ class TestEvolutionGate(QiskitTestCase):
 
     def test_atomic_evolution(self):
         """Test a custom atomic_evolution."""
-
-        def atomic_evolution(pauli, time):
-            if isinstance(pauli, SparsePauliOp):
-                if len(pauli.paulis) != 1:
-                    raise ValueError("Unsupported input.")
-                time *= np.real(pauli.coeffs[0])
-                pauli = pauli.paulis[0]
-
-            cliff = diagonalizing_clifford(pauli)
-            chain = cnot_chain(pauli)
-
-            target = None
-            for i, pauli_i in enumerate(reversed(pauli.to_label())):
-                if pauli_i != "I":
-                    target = i
-                    break
-
-            definition = QuantumCircuit(pauli.num_qubits)
-            definition.compose(cliff, inplace=True)
-            definition.compose(chain, inplace=True)
-            definition.rz(2 * time, target)
-            definition.compose(chain.inverse(), inplace=True)
-            definition.compose(cliff.inverse(), inplace=True)
-
-            return definition
-
         op = (X ^ X ^ X) + (Y ^ Y ^ Y) + (Z ^ Z ^ Z)
         time = 0.123
         reps = 4
@@ -474,16 +448,20 @@ class TestEvolutionGate(QiskitTestCase):
             evo_gate = PauliEvolutionGate(
                 op,
                 time,
-                synthesis=LieTrotter(reps=reps, atomic_evolution=atomic_evolution),
+                synthesis=LieTrotter(reps=reps, atomic_evolution=custom_atomic_evolution),
             )
         decomposed = evo_gate.definition.decompose()
         self.assertEqual(decomposed.count_ops()["cx"], reps * 3 * 4)
 
     def test_all_identity(self):
         """Test circuit with all identity Paulis works correctly."""
-        evo = PauliEvolutionGate(I ^ I, time=1).definition
-        expected = QuantumCircuit(2, global_phase=-1)
-        self.assertEqual(expected, evo)
+        ops = [I ^ I, Pauli("II"), SparseObservable.identity(2)]
+
+        for op in ops:
+            with self.subTest(op=op):
+                evo = PauliEvolutionGate(op, time=1).definition
+                expected = QuantumCircuit(2, global_phase=-1)
+                self.assertEqual(expected, evo)
 
     def test_global_phase(self):
         """Test a circuit with parameterized global phase terms.
@@ -523,12 +501,56 @@ class TestEvolutionGate(QiskitTestCase):
         expected = (2.0 * time).sympify()
         self.assertEqual(expected, angle.sympify())
 
+    def test_zero(self):
+        """Test the SparseObservable zero operator."""
+        op = SparseObservable.zero(2)
+        evo = PauliEvolutionGate(op, time=1).definition
+        expected = QuantumCircuit(2, global_phase=0)
+        self.assertEqual(expected, evo)
+
+    def test_projector(self):
+        """Test a SparseObservable with projectors."""
+        op = SparseObservable("+-lr01")
+        evo = PauliEvolutionGate(op, time=1).definition
+
+        pauli = SparsePauliOp.from_sparse_observable(op)
+        ref = PauliEvolutionGate(pauli, time=1).definition
+
+        self.assertEqual(ref, evo)
+
+    def test_projector_and_pauli(self):
+        """Test a mix of Paulis and projectors."""
+        op = SparseObservable.from_list([("01", 1), ("X+", -1), ("YY", 1)])
+        evo = PauliEvolutionGate(op, time=1).definition
+
+        pauli = SparsePauliOp.from_sparse_observable(op)
+        ref = PauliEvolutionGate(pauli, time=1).definition
+
+        self.assertEqual(ref, evo)
+
+    def test_sparse_observable_atomic_evo(self):
+        """Test a SparseObservable input with a legacy atomic evolution."""
+        op = SparseObservable("IZ01X+-Ylr")
+        with self.assertWarns(PendingDeprecationWarning):
+            synth = LieTrotter(atomic_evolution=custom_atomic_evolution)
+
+        evo = PauliEvolutionGate(op, time=2, synthesis=synth).definition
+
+        pauli = SparsePauliOp.from_sparse_observable(op)
+        ref = PauliEvolutionGate(pauli, time=2, synthesis=synth).definition
+
+        self.assertEqual(ref, evo)
+
 
 def exact_atomic_evolution(circuit, pauli, time):
     """An exact atomic evolution for Suzuki-Trotter.
 
     Note that the Pauli has a x2 coefficient already, hence we evolve for time/2.
     """
+    # workaround until SparseObservable does not natively implement to_matrix
+    if isinstance(pauli, SparseObservable):
+        pauli = SparsePauliOp.from_sparse_observable(pauli)
+
     circuit.append(HamiltonianGate(pauli.to_matrix(), time / 2), circuit.qubits)
 
 
@@ -582,6 +604,32 @@ def cnot_chain(pauli: Pauli) -> QuantumCircuit:
             target = None
 
     return chain
+
+
+def custom_atomic_evolution(pauli, time):
+    if isinstance(pauli, SparsePauliOp):
+        if len(pauli.paulis) != 1:
+            raise ValueError("Unsupported input.")
+        time *= np.real(pauli.coeffs[0])
+        pauli = pauli.paulis[0]
+
+    cliff = diagonalizing_clifford(pauli)
+    chain = cnot_chain(pauli)
+
+    target = None
+    for i, pauli_i in enumerate(reversed(pauli.to_label())):
+        if pauli_i != "I":
+            target = i
+            break
+
+    definition = QuantumCircuit(pauli.num_qubits)
+    definition.compose(cliff, inplace=True)
+    definition.compose(chain, inplace=True)
+    definition.rz(2 * time, target)
+    definition.compose(chain.inverse(), inplace=True)
+    definition.compose(cliff.inverse(), inplace=True)
+
+    return definition
 
 
 if __name__ == "__main__":
