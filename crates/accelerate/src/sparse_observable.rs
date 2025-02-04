@@ -191,17 +191,17 @@ impl BitTerm {
     }
 }
 
-fn bit_term_as_pauli(bit: &BitTerm) -> Vec<(bool, Option<BitTerm>)> {
+fn bit_term_as_pauli(bit: &BitTerm) -> &'static [(bool, Option<BitTerm>)] {
     match bit {
-        BitTerm::X => vec![(true, Some(BitTerm::X))],
-        BitTerm::Y => vec![(true, Some(BitTerm::Y))],
-        BitTerm::Z => vec![(true, Some(BitTerm::Z))],
-        BitTerm::Plus => vec![(true, None), (true, Some(BitTerm::X))],
-        BitTerm::Minus => vec![(true, None), (false, Some(BitTerm::X))],
-        BitTerm::Left => vec![(true, None), (true, Some(BitTerm::Y))],
-        BitTerm::Right => vec![(true, None), (false, Some(BitTerm::Y))],
-        BitTerm::Zero => vec![(true, None), (true, Some(BitTerm::Z))],
-        BitTerm::One => vec![(true, None), (false, Some(BitTerm::Z))],
+        BitTerm::X => &[(true, Some(BitTerm::X))],
+        BitTerm::Y => &[(true, Some(BitTerm::Y))],
+        BitTerm::Z => &[(true, Some(BitTerm::Z))],
+        BitTerm::Plus => &[(true, None), (true, Some(BitTerm::X))],
+        BitTerm::Minus => &[(true, None), (false, Some(BitTerm::X))],
+        BitTerm::Left => &[(true, None), (true, Some(BitTerm::Y))],
+        BitTerm::Right => &[(true, None), (false, Some(BitTerm::Y))],
+        BitTerm::Zero => &[(true, None), (true, Some(BitTerm::Z))],
+        BitTerm::One => &[(true, None), (false, Some(BitTerm::Z))],
     }
 }
 
@@ -660,17 +660,19 @@ impl SparseObservable {
         }
     }
 
-    /// Get a sparse Pauli representation of the observable.
-    ///
-    /// This returns an iterator over the terms in form of tuples ``(paulis, indices, coeff)``,
-    /// where ``paulis`` is a vector of **Pauli** [BitTerm]s X, Y, Z.
+    /// Expand all projectors into Pauli representation.
     ///
     /// # Warning
     ///
     /// This representation is highly inefficient for projectors. For example, a term with
     /// :math:`n` projectors :math:`|+\rangle\langle +|` will use :math:`2^n` Pauli terms.
-    pub fn to_paulis(&self) -> impl Iterator<Item = (Vec<BitTerm>, Vec<u32>, Complex64)> + '_ {
-        self.iter().flat_map(|view| {
+    pub fn as_paulis(&self) -> Self {
+        let mut paulis: Vec<BitTerm> = Vec::new(); // maybe get capacity here
+        let mut indices: Vec<u32> = Vec::new();
+        let mut coeffs: Vec<Complex64> = Vec::new();
+        let mut boundaries: Vec<usize> = vec![0];
+
+        for view in self.iter() {
             let num_projectors = view
                 .bit_terms
                 .iter()
@@ -678,26 +680,36 @@ impl SparseObservable {
                 .count();
             let div = 2_f64.powi(num_projectors as i32);
 
-            view.bit_terms
+            let combinations = view
+                .bit_terms
                 .iter()
                 .map(bit_term_as_pauli)
-                .multi_cartesian_product()
-                .map(move |combination| {
-                    let mut positive = true;
-                    let mut paulis: Vec<BitTerm> = Vec::new();
-                    let mut indices: Vec<u32> = Vec::new();
+                .multi_cartesian_product();
 
-                    for (index, (sign, bit)) in combination.iter().enumerate() {
-                        positive &= sign;
-                        if let Some(bit) = bit {
-                            paulis.push(*bit);
-                            indices.push(view.indices[index]);
-                        }
+            for combination in combinations {
+                let mut positive = true;
+
+                for (index, (sign, bit)) in combination.iter().enumerate() {
+                    positive &= sign;
+                    if let Some(bit) = bit {
+                        paulis.push(*bit);
+                        indices.push(view.indices[index]);
                     }
-                    let coeff = if positive { view.coeff } else { -view.coeff };
-                    (paulis, indices, coeff / div)
-                })
-        })
+                }
+                boundaries.push(paulis.len());
+
+                let coeff = if positive { view.coeff } else { -view.coeff };
+                coeffs.push(coeff / div)
+            }
+        }
+
+        Self {
+            num_qubits: self.num_qubits,
+            coeffs,
+            bit_terms: paulis,
+            indices,
+            boundaries,
+        }
     }
 
     /// Add the term implied by a dense string label onto this observable.
@@ -2400,52 +2412,66 @@ impl PySparseObservable {
         Ok(inner.into())
     }
 
+    /// Express the observable in Pauli terms only, by writing each projector as sum of Pauli terms.
+    ///
+    /// Note that there is no guarantee of the order the resulting Pauli terms. Use
+    /// :meth:`SparseObservable.simplify` in addition to obtain a canonical representation.
+    ///
+    /// .. warning::
+    ///
+    ///     Beware that this will use at least :math:`2^n` terms if there are :math:`n`
+    ///     single-qubit projectors present, which can lead to an exponential number of terms.
+    ///
+    /// Returns:
+    ///     The same observable, but expressed in Pauli terms only.
+    ///
+    /// Examples:
+    ///
+    ///     >>> obs = SparseObservable("+")
+    ///     >>> obs.as_paulis()
+    ///     <SparseObservable with 2 terms on 1 qubit: (0.5+0j)() + (0.5+0j)(X_0)>
+    ///     >>> direct = SparseObservable.from_list([("I", 0.5), ("Z", 0.5)])
+    ///     >>> assert direct.simplify() == obs.as_paulis().simplify()
+    fn as_paulis(&self) -> PyResult<Self> {
+        let inner = self.inner.read().map_err(|_| InnerReadError)?;
+        Ok(inner.as_paulis().into())
+    }
+
     /// Express the observable in terms of a sparse list format.
     ///
-    /// This is the counter-operation of :meth:`.SparseObservable.from_sparse_list`.
-    ///
-    /// Args:
-    ///     only_pauli: If ``True``, express the observable only in terms of non-identity Paulis,
-    ///         :math:`X`, :math:`Y`, and :math:`Z`. Beware that this will use at least :math:`2^n`
-    ///         terms if there are :math:`n` single-qubit projectors present, which can lead
-    ///         to an exponentially expensive representation. Defaults to ``False``.
+    /// This can be seen as counter-operation of :meth:`.SparseObservable.from_sparse_list`, however
+    /// the order of terms is not guaranteed to be the same at after a roundtrip to a sparse
+    /// list and back.
     ///
     /// Examples:
     ///     
     ///     >>> obs = SparseObservable.from_list([("IIXIZ", 2j), ("IIZIX", 2j)])
     ///     >>> reconstructed = SparseObservable.from_sparse_list(obs.to_sparse_list(), obs.num_qubits)
-    ///     >>> assert obs == reconstructed
-    #[pyo3(signature = (only_paulis=false))]
-    fn to_sparse_list(&self, py: Python, only_paulis: bool) -> PyResult<Py<PyList>> {
+    #[pyo3(signature = ())]
+    fn to_sparse_list(&self, py: Python) -> PyResult<Py<PyList>> {
         let inner = self.inner.read().map_err(|_| InnerReadError)?;
 
-        // turn a 3-tuple of (bit terms, indices, coeff) into a Python tuple
-        let to_py_tuple = |bits: &[BitTerm], indices: &[u32], coeff: Complex64| {
-            let mut pauli_string = String::new();
-            for bit in bits {
+        // turn a SparseView into a Python tuple of (bit terms, indices, coeff)
+        let to_py_tuple = |view: SparseTermView| {
+            let mut pauli_string = String::with_capacity(view.bit_terms.len());
+
+            // we reverse the order of bits and indices so the Pauli string comes out in
+            // "reading order", consistent with how one would write the label in
+            // SparseObservable.from_list or .from_label
+            for bit in view.bit_terms.iter().rev() {
                 pauli_string.push_str(bit.py_label());
             }
             let py_string = PyString::new(py, &pauli_string).unbind();
-            let py_indices = PyList::new(py, indices)?.unbind();
-            let py_coeff = coeff.into_py_any(py)?;
+            let py_indices = PyList::new(py, view.indices.iter().rev())?.unbind();
+            let py_coeff = view.coeff.into_py_any(py)?;
 
             PyTuple::new(py, vec![py_string.as_any(), py_indices.as_any(), &py_coeff])
         };
 
-        // to map onto a Pauli list, we first have to expand all projectors, otherwise
-        // we can just directly iterate over the view
-        let sparse_list = match only_paulis {
-            false => inner
-                .iter()
-                .map(|view| to_py_tuple(view.bit_terms, view.indices, view.coeff))
-                .collect::<PyResult<Vec<_>>>()?,
-            true => inner
-                .to_paulis()
-                .map(move |(bits, indices, coeff)| to_py_tuple(&bits, &indices, coeff))
-                .collect::<PyResult<Vec<_>>>()?,
-        };
-
-        let out = PyList::new(py, sparse_list)?;
+        let out = PyList::empty(py);
+        for view in inner.iter() {
+            out.append(to_py_tuple(view)?)?;
+        }
         Ok(out.unbind())
     }
 
