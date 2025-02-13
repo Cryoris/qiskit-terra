@@ -205,7 +205,7 @@ class ProductFormula(EvolutionSynthesis):
         for i, pauli_rotation in enumerate(pauli_rotations):
             if self._atomic_evolution is not None:
                 # use the user-provided evolution with a global operator
-                operator = SparsePauliOp.from_sparse_list([pauli_rotation], num_qubits)
+                operator = SparseObservable.from_sparse_list([pauli_rotation], num_qubits)
                 self.atomic_evolution(circuit, operator, time=1)  # time is inside the Pauli coeff
 
             else:  # this means self._wrap is True

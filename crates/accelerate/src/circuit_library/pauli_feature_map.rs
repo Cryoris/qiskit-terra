@@ -184,11 +184,11 @@ fn _get_evolution_layer<'a>(
                 multiply_param(&angle, alpha, py),
                 true,
                 false,
-            )
-            .map(|(gate, params, qargs)| {
-                (gate.into(), params, qargs.to_vec(), vec![] as Vec<Clbit>)
-            })
-            .collect::<Vec<Instruction>>();
+            );
+            // .map(|(gate, params, qargs)| {
+            //     (gate.into(), params, qargs.to_vec(), vec![] as Vec<Clbit>)
+            // })
+            // .collect::<Vec<Instruction>>();
             insts.extend(evo);
         }
     }

@@ -25,6 +25,18 @@ from qiskit.quantum_info import Pauli, SparsePauliOp, SparseObservable
 if TYPE_CHECKING:
     from qiskit.synthesis.evolution import EvolutionSynthesis
 
+BIT_LABELS = {
+    0b0001: "Z",
+    0b1001: "0",
+    0b0101: "1",
+    0b0010: "X",
+    0b1010: "+",
+    0b0110: "-",
+    0b0011: "Y",
+    0b1011: "r",
+    0b0111: "l",
+}
+
 
 class PauliEvolutionGate(Gate):
     r"""Time-evolution of an operator consisting of Paulis.
@@ -186,8 +198,8 @@ def _to_sparse_op(
 def _operator_label(operator):
     if isinstance(operator, SparseObservable):
         if len(operator) == 1:
-            return operator[0].to_label()
-        return "(" + " + ".join(term.to_label() for term in operator) + ")"
+            return _sparse_term_label(operator[0])
+        return "(" + " + ".join(_sparse_term_label(term) for term in operator) + ")"
 
     # else: is a SparsePauliOp
     if len(operator.paulis) == 1:
@@ -199,3 +211,7 @@ def _get_default_label(operator):
     if isinstance(operator, list):
         return f"exp(-it ({[_operator_label(op) for op in operator]}))"
     return f"exp(-it {_operator_label(operator)})"
+
+
+def _sparse_term_label(term):
+    return "".join(BIT_LABELS[bit] for bit in reversed(term.bit_terms))

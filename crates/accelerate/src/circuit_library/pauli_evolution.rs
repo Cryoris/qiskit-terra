@@ -10,9 +10,10 @@
 // copyright notice, and modified files need to carry a notice indicating
 // that they have been altered from the originals.
 
-use pyo3::prelude::*;
-use pyo3::types::{PyList, PyString, PyTuple};
+use pyo3::types::{PyList, PyNone, PyString, PyTuple};
+use pyo3::{intern, prelude::*};
 use qiskit_circuit::circuit_data::CircuitData;
+use qiskit_circuit::circuit_instruction::{ExtraInstructionAttributes, OperationFromPython};
 use qiskit_circuit::operations;
 use qiskit_circuit::operations::{multiply_param, radd_param, Param, StandardGate};
 use qiskit_circuit::packed_instruction::PackedOperation;
@@ -20,7 +21,6 @@ use qiskit_circuit::{Clbit, Qubit};
 use smallvec::{smallvec, SmallVec};
 
 // custom types for a more readable code
-type StandardInstruction = (StandardGate, SmallVec<[Param; 3]>, SmallVec<[Qubit; 2]>);
 type Instruction = (
     PackedOperation,
     SmallVec<[Param; 3]>,
@@ -51,7 +51,7 @@ pub fn pauli_evolution<'a>(
     time: Param,
     phase_gate: bool,
     do_fountain: bool,
-) -> Box<dyn Iterator<Item = StandardInstruction> + 'a> {
+) -> Box<dyn Iterator<Item = Instruction> + 'a> {
     // ensure the Pauli has no identity terms
     let binding = pauli.to_lowercase(); // lowercase for convenience
     let active = binding
@@ -82,16 +82,36 @@ fn single_qubit_evolution(
     pauli: char,
     index: u32,
     time: Param,
-) -> impl Iterator<Item = StandardInstruction> {
-    let qubit: SmallVec<[Qubit; 2]> = smallvec![Qubit(index)];
-    let param: SmallVec<[Param; 3]> = smallvec![time];
+) -> Box<dyn Iterator<Item = Instruction>> {
+    let qubit = vec![Qubit(index)];
 
-    std::iter::once(match pauli {
-        'x' => (StandardGate::RXGate, param, qubit),
-        'y' => (StandardGate::RYGate, param, qubit),
-        'z' => (StandardGate::RZGate, param, qubit),
-        _ => unreachable!("Unsupported Pauli, at this point we expected one of x, y, z."),
-    })
+    match pauli {
+        'x' => Box::new(std::iter::once((
+            StandardGate::RXGate.into(),
+            smallvec![time],
+            qubit,
+            vec![],
+        ))),
+        'y' => Box::new(std::iter::once((
+            StandardGate::RYGate.into(),
+            smallvec![time],
+            qubit,
+            vec![],
+        ))),
+        'z' => Box::new(std::iter::once((
+            StandardGate::RZGate.into(),
+            smallvec![time],
+            qubit,
+            vec![],
+        ))),
+        _ => Box::new(multi_qubit_evolution(
+            vec![pauli],
+            vec![index],
+            time,
+            false,
+            false,
+        )),
+    }
 }
 
 /// Implement a 2-qubit Pauli evolution of a Pauli string, on a given indices and
@@ -104,16 +124,36 @@ fn two_qubit_evolution<'a>(
     pauli: Vec<char>,
     indices: Vec<u32>,
     time: Param,
-) -> Box<dyn Iterator<Item = StandardInstruction> + 'a> {
-    let qubits: SmallVec<[Qubit; 2]> = smallvec![Qubit(indices[0]), Qubit(indices[1])];
+) -> Box<dyn Iterator<Item = Instruction> + 'a> {
+    let qubits = vec![Qubit(indices[0]), Qubit(indices[1])];
     let param: SmallVec<[Param; 3]> = smallvec![time.clone()];
     let paulistring: String = pauli.iter().collect();
 
     match paulistring.as_str() {
-        "xx" => Box::new(std::iter::once((StandardGate::RXXGate, param, qubits))),
-        "zx" => Box::new(std::iter::once((StandardGate::RZXGate, param, qubits))),
-        "yy" => Box::new(std::iter::once((StandardGate::RYYGate, param, qubits))),
-        "zz" => Box::new(std::iter::once((StandardGate::RZZGate, param, qubits))),
+        "xx" => Box::new(std::iter::once((
+            StandardGate::RXXGate.into(),
+            param,
+            qubits,
+            vec![],
+        ))),
+        "zx" => Box::new(std::iter::once((
+            StandardGate::RZXGate.into(),
+            param,
+            qubits,
+            vec![],
+        ))),
+        "yy" => Box::new(std::iter::once((
+            StandardGate::RYYGate.into(),
+            param,
+            qubits,
+            vec![],
+        ))),
+        "zz" => Box::new(std::iter::once((
+            StandardGate::RZZGate.into(),
+            param,
+            qubits,
+            vec![],
+        ))),
         // Note: the CX modes (do_fountain=true/false) give the same circuit for a 2-qubit
         // Pauli, so we just set it to false here
         _ => Box::new(multi_qubit_evolution(pauli, indices, time, false, false)),
@@ -125,31 +165,61 @@ fn multi_qubit_evolution(
     pauli: Vec<char>,
     indices: Vec<u32>,
     time: Param,
-    phase_gate: bool,
+    phase_gate_for_paulis: bool,
     do_fountain: bool,
-) -> impl Iterator<Item = StandardInstruction> {
-    let active_paulis: Vec<(char, Qubit)> = pauli
-        .into_iter()
-        .zip(indices.into_iter().map(Qubit))
-        .collect();
+) -> impl Iterator<Item = Instruction> {
+    let mut control_qubits: Vec<Qubit> = Vec::new(); // indices of projectors
+    let mut control_states: Vec<bool> = Vec::new(); // +1 projector (true) or -1 projector (false)
+    let mut pauli_qubits: Vec<Qubit> = Vec::new(); // indices of Paulis
+    let mut basis_change: Vec<Instruction> = Vec::new(); // basis changes for all
 
-    // get the basis change: x -> HGate, y -> SXdgGate, z -> nothing
-    let basis_change: Vec<StandardInstruction> = active_paulis
-        .iter()
-        .filter(|(p, _)| *p != 'z')
-        .map(|(p, q)| match p {
-            'x' => (StandardGate::HGate, smallvec![], smallvec![*q]),
-            'y' => (StandardGate::SXGate, smallvec![], smallvec![*q]),
-            _ => unreachable!("Invalid Pauli string."), // "z" and "i" have been filtered out
-        })
-        .collect();
+    let paulis = ['x', 'y', 'z'];
+    let positive = ['+', 'r', '0'];
+    let empty_clbits: Vec<Clbit> = Vec::new();
+
+    for (bit_term, index) in pauli.iter().zip(indices.iter()) {
+        let q = Qubit(*index);
+        println!("qubit {:?} bit_term {:?}", q, bit_term);
+        match bit_term {
+            'x' | '+' | '-' => basis_change.push((
+                StandardGate::HGate.into(),
+                smallvec![],
+                vec![q.clone()],
+                empty_clbits.clone(),
+            )),
+            'y' | 'r' | 'l' => basis_change.push((
+                StandardGate::SXGate.into(),
+                smallvec![],
+                vec![q.clone()],
+                empty_clbits.clone(),
+            )),
+            _ => {}
+        };
+
+        if paulis.contains(bit_term) {
+            pauli_qubits.push(q);
+        } else {
+            control_qubits.push(q);
+            control_states.push(positive.contains(bit_term));
+        }
+    }
 
     // get the inverse basis change
-    let inverse_basis_change: Vec<StandardInstruction> = basis_change
+    let inverse_basis_change: Vec<Instruction> = basis_change
         .iter()
-        .map(|(gate, _, qubit)| match gate {
-            StandardGate::HGate => (StandardGate::HGate, smallvec![], qubit.clone()),
-            StandardGate::SXGate => (StandardGate::SXdgGate, smallvec![], qubit.clone()),
+        .map(|(gate, _, qubit, _)| match gate.standard_gate() {
+            StandardGate::HGate => (
+                StandardGate::HGate.into(),
+                smallvec![],
+                qubit.clone(),
+                empty_clbits.clone(),
+            ),
+            StandardGate::SXGate => (
+                StandardGate::SXdgGate.into(),
+                smallvec![],
+                qubit.clone(),
+                empty_clbits.clone(),
+            ),
             _ => unreachable!("Invalid basis-changing Clifford."),
         })
         .collect();
@@ -157,32 +227,82 @@ fn multi_qubit_evolution(
     // get the CX propagation up to the first qubit, and down
     let (chain_up, chain_down) = match do_fountain {
         true => (
-            cx_fountain(active_paulis.clone()),
-            cx_fountain(active_paulis.clone()).rev(),
+            cx_fountain(pauli_qubits.clone()),
+            cx_fountain(pauli_qubits.clone()).rev(),
         ),
         false => (
-            cx_chain(active_paulis.clone()),
-            cx_chain(active_paulis.clone()).rev(),
+            cx_chain(pauli_qubits.clone()),
+            cx_chain(pauli_qubits.clone()).rev(),
         ),
     };
 
-    // get the RZ gate on the first qubit
-    let first_qubit = active_paulis.first().unwrap().1;
-    let z_rotation = std::iter::once((
-        if phase_gate {
+    // get the Z/phase rotation targeting the first qubit
+    let rotation = if pauli_qubits.len() > 0 {
+        let params: SmallVec<[Param; 3]> = smallvec![time];
+        let base_gate = if phase_gate_for_paulis {
             StandardGate::PhaseGate
         } else {
             StandardGate::RZGate
-        },
-        smallvec![time],
-        smallvec![first_qubit],
-    ));
+        };
+
+        let (packed, qubits) = if control_qubits.len() == 0 {
+            let gate: PackedOperation = base_gate.into();
+            (gate, vec![pauli_qubits[0]])
+        } else {
+            control_qubits.push(pauli_qubits[0]); // the control_qubits variable is no longer used
+            let controlled = add_control(base_gate, &params, &control_states).unwrap();
+            (controlled, control_qubits)
+        };
+        vec![(packed, params, qubits, empty_clbits.clone())]
+    } else {
+        let params: SmallVec<[Param; 3]> =
+            Python::with_gil(|py| smallvec![multiply_param(&time, -0.5, py)]);
+        let (packed, qubits) = if control_qubits.len() == 1 {
+            let gate: PackedOperation = StandardGate::PhaseGate.into();
+            (gate, vec![control_qubits[0]])
+        } else {
+            println!("control qubits {:?}", control_qubits);
+            println!("control states {:?}", control_states);
+            let controlled =
+                add_control(StandardGate::PhaseGate, &params, &control_states[1..]).unwrap();
+            let mut qubits: Vec<Qubit> = Vec::with_capacity(control_qubits.len());
+            // qubits.extend_from_slice(&control_qubits[1..]);
+            // qubits.push(control_qubits[0]);
+            control_qubits.reverse();
+            (controlled, control_qubits)
+        };
+        let inst: Instruction = (packed, params, qubits.clone(), empty_clbits.clone());
+
+        if control_states[0] {
+            // sandwich in X gates for the correct projector
+            let x: Instruction = (
+                StandardGate::XGate.into(),
+                smallvec![],
+                vec![*qubits.last().unwrap()],
+                empty_clbits.clone(),
+            );
+            vec![x.clone(), inst, x]
+        } else {
+            vec![inst]
+        }
+    };
+
+    // let first_qubit = pauli_qubits.first().unwrap();
+    // let z_rotation = std::iter::once((
+    //     if phase_gate {
+    //         StandardGate::PhaseGate
+    //     } else {
+    //         StandardGate::RZGate
+    //     },
+    //     smallvec![time],
+    //     smallvec![*first_qubit],
+    // ));
 
     // and finally chain everything together
     basis_change
         .into_iter()
         .chain(chain_down)
-        .chain(z_rotation)
+        .chain(rotation.into_iter())
         .chain(chain_up)
         .chain(inverse_basis_change)
 }
@@ -260,12 +380,7 @@ pub fn py_pauli_evolution(
 
     let evos = paulis.iter().enumerate().zip(indices).zip(times).flat_map(
         |(((i, pauli), qubits), time)| {
-            let as_packed = pauli_evolution(pauli, qubits, time, false, do_fountain).map(
-                |(gate, params, qubits)| -> PyResult<Instruction> {
-                    Ok((gate.into(), params, Vec::from_iter(qubits), Vec::new()))
-                },
-            );
-
+            let as_packed = pauli_evolution(pauli, qubits, time, false, do_fountain).map(Ok);
             // this creates an iterator containing a barrier only if required, otherwise it is empty
             let maybe_barrier = (insert_barriers && i < (num_paulis - 1))
                 .then_some(Ok(barrier.clone()))
@@ -298,14 +413,23 @@ pub fn py_pauli_evolution(
 ///          └─┬─┘
 ///     q_4: ──■────────────
 ///
-fn cx_chain(
-    active_paulis: Vec<(char, Qubit)>,
-) -> Box<dyn DoubleEndedIterator<Item = StandardInstruction>> {
-    let num_terms = active_paulis.len();
+fn cx_chain(qubits: Vec<Qubit>) -> Box<dyn DoubleEndedIterator<Item = Instruction>> {
+    let num_terms = qubits.len();
+    if num_terms < 2 {
+        return Box::new(std::iter::empty());
+    }
+
     Box::new(
         (0..num_terms - 1)
-            .map(move |i| (active_paulis[i].1, active_paulis[i + 1].1))
-            .map(|(target, ctrl)| (StandardGate::CXGate, smallvec![], smallvec![ctrl, target])),
+            .map(move |i| (qubits[i], qubits[i + 1]))
+            .map(|(target, ctrl)| {
+                (
+                    StandardGate::CXGate.into(),
+                    smallvec![],
+                    vec![ctrl, target],
+                    vec![],
+                )
+            }),
     )
 }
 
@@ -322,17 +446,51 @@ fn cx_chain(
 ///                     │
 ///    q_4: ────────────■──
 ///
-fn cx_fountain(
-    active_paulis: Vec<(char, Qubit)>,
-) -> Box<dyn DoubleEndedIterator<Item = StandardInstruction>> {
-    let num_terms = active_paulis.len();
-    let first_qubit = active_paulis[0].1;
+fn cx_fountain(qubits: Vec<Qubit>) -> Box<dyn DoubleEndedIterator<Item = Instruction>> {
+    let num_terms = qubits.len();
+    if num_terms < 2 {
+        return Box::new(std::iter::empty());
+    }
+
+    let first_qubit = qubits[0];
     Box::new((1..num_terms).rev().map(move |i| {
-        let ctrl = active_paulis[i].1;
+        let ctrl = qubits[i];
         (
-            StandardGate::CXGate,
+            StandardGate::CXGate.into(),
             smallvec![],
-            smallvec![ctrl, first_qubit],
+            vec![ctrl, first_qubit],
+            vec![],
         )
     }))
+}
+
+fn add_control(
+    gate: StandardGate,
+    params: &[Param],
+    control_state: &[bool],
+) -> PyResult<PackedOperation> {
+    Python::with_gil(|py| {
+        let extra_attrs = ExtraInstructionAttributes::default();
+        let pygate = gate.create_py_op(py, Some(params), &extra_attrs)?;
+        let num_controls = control_state.len();
+        let py_control_state = PyString::new(
+            py,
+            control_state
+                .iter()
+                .map(|is_open| is_open.then(|| '0').unwrap_or_else(|| '1'))
+                .collect::<String>()
+                .as_str(),
+        );
+        println!("Control state {:?}", py_control_state);
+        let label = PyNone::get(py);
+        let controlled_gate = pygate
+            .call_method1(
+                py,
+                intern!(py, "control"),
+                (num_controls, label, py_control_state),
+            )?
+            .extract::<OperationFromPython>(py)?;
+
+        Ok(controlled_gate.operation)
+    })
 }

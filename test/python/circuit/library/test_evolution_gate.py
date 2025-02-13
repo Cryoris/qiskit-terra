@@ -20,7 +20,7 @@ import scipy
 from ddt import ddt, data, unpack
 
 from qiskit.circuit import QuantumCircuit, Parameter
-from qiskit.circuit.library import PauliEvolutionGate, HamiltonianGate
+from qiskit.circuit.library import PauliEvolutionGate, HamiltonianGate, PhaseGate
 from qiskit.synthesis import LieTrotter, SuzukiTrotter, MatrixExponential, QDrift
 from qiskit.synthesis.evolution.product_formula import reorder_paulis
 from qiskit.converters import circuit_to_dag
@@ -429,10 +429,15 @@ class TestEvolutionGate(QiskitTestCase):
 
     def test_labels_and_name(self):
         """Test the name and labels are correct."""
-        operators = [X, (X + Y), ((I ^ Z) + (Z ^ I) - 0.2 * (X ^ X))]
+        operators = [
+            SparsePauliOp("XY"),
+            (X + Y),
+            ((I ^ Z) + (Z ^ I) - 0.2 * (X ^ X)),
+            SparseObservable("01Z+-XlrY"),
+        ]
 
         # note: the labels do not show coefficients!
-        expected_labels = ["X", "(X + Y)", "(IZ + ZI + XX)"]
+        expected_labels = ["XY", "(X + Y)", "(IZ + ZI + XX)", "01Z+-XlrY"]
         for op, label in zip(operators, expected_labels):
             with self.subTest(op=op, label=label):
                 evo = PauliEvolutionGate(op)
@@ -508,15 +513,49 @@ class TestEvolutionGate(QiskitTestCase):
         expected = QuantumCircuit(2, global_phase=0)
         self.assertEqual(expected, evo)
 
-    def test_projector(self):
+    @data(
+        "0",
+        "1",
+        "+",
+        "-",
+        "r",
+        "l",
+        "XIYZ",
+        "001",
+        "100",
+        "+-lr01",
+        "+-rl01",
+    )
+    def test_projectors(self, projector):
         """Test a SparseObservable with projectors."""
-        op = SparseObservable("+-lr01")
+        op = SparseObservable(projector)
+        # op = SparsePauliOp(projector)
         evo = PauliEvolutionGate(op, time=1).definition
+        print(projector)
+        print(evo.draw())
 
         pauli = SparsePauliOp.from_sparse_observable(op)
         ref = PauliEvolutionGate(pauli, time=1).definition
+        self.assertEqual(Operator(ref), Operator(evo))
 
-        self.assertEqual(ref, evo)
+    def test_projector_circuit(self):
+        """Test a SparseObservable with projectors."""
+        op = SparseObservable("-+rl10")
+        evo = PauliEvolutionGate(op, time=1).definition
+
+        reference = QuantumCircuit(*evo.qregs)
+        reference.sx([2, 3])
+        reference.h([4, 5])
+
+        reference.append(PhaseGate(-1.0).control(5, ctrl_state="00110"), reference.qubits)
+
+        reference.sxdg([2, 3])
+        reference.h([4, 5])
+
+        print(evo.data[4].qubits)
+        print(reference.data[4].qubits)
+
+        self.assertEqual(reference, evo)
 
     def test_projector_and_pauli(self):
         """Test a mix of Paulis and projectors."""
@@ -526,7 +565,7 @@ class TestEvolutionGate(QiskitTestCase):
         pauli = SparsePauliOp.from_sparse_observable(op)
         ref = PauliEvolutionGate(pauli, time=1).definition
 
-        self.assertEqual(ref, evo)
+        self.assertEqual(Operator(ref), Operator(evo))
 
     def test_sparse_observable_atomic_evo(self):
         """Test a SparseObservable input with a legacy atomic evolution."""
@@ -538,6 +577,58 @@ class TestEvolutionGate(QiskitTestCase):
 
         pauli = SparsePauliOp.from_sparse_observable(op)
         ref = PauliEvolutionGate(pauli, time=2, synthesis=synth).definition
+
+        self.assertEqual(ref, evo)
+
+    def test_single_qubit_evolutions(self):
+        """Test all single qubit evolutions."""
+        op = SparseObservable.from_sparse_list(
+            [(pauli, [i], 1) for i, pauli in enumerate("Z01X+-Yrl")], 9
+        )
+        evo = PauliEvolutionGate(op, time=1).definition
+
+        ref = QuantumCircuit(9)
+
+        # Z
+        ref.rz(2, 0)
+
+        # |0><0|
+        ref.x(1)
+        ref.p(-1, 1)
+        ref.x(1)
+
+        # |1><1|
+        ref.p(-1, 2)
+
+        # X
+        ref.rx(2, 3)
+
+        # |+><+|
+        ref.h(4)
+        ref.x(4)
+        ref.p(-1, 4)
+        ref.x(4)
+        ref.h(4)
+
+        # |-><-|
+        ref.h(5)
+        ref.p(-1, 5)
+        ref.h(5)
+
+        # Y
+        ref.ry(2, 6)
+
+        # |r><r|
+        ref.sx(7)
+        ref.x(7)
+        ref.p(-1, 7)
+        ref.x(7)
+        ref.sxdg(7)
+
+        # |l><l|
+        ref.sx(8)
+        ref.p(-1, 8)
+        ref.sxdg(8)
 
         self.assertEqual(ref, evo)
 
@@ -608,10 +699,12 @@ def cnot_chain(pauli: Pauli) -> QuantumCircuit:
 
 def custom_atomic_evolution(pauli, time):
     if isinstance(pauli, SparsePauliOp):
-        if len(pauli.paulis) != 1:
-            raise ValueError("Unsupported input.")
-        time *= np.real(pauli.coeffs[0])
-        pauli = pauli.paulis[0]
+        circuit = QuantumCircuit(pauli.num_qubits)
+        for single_term, coeff in zip(pauli.paulis, pauli.coeffs):
+            circuit.compose(
+                custom_atomic_evolution(single_term, np.real(coeff) * time), inplace=True
+            )
+        return circuit
 
     cliff = diagonalizing_clifford(pauli)
     chain = cnot_chain(pauli)
