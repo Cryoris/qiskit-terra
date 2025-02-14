@@ -739,7 +739,7 @@ impl SparseObservable {
                     left.indices
                         .iter()
                         .copied()
-                        .zip(right.bit_terms.iter().copied()),
+                        .zip(left.bit_terms.iter().copied()),
                     right
                         .indices
                         .iter()
