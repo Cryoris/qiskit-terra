@@ -1,0 +1,5 @@
+---
+features_quantum_info:
+  - |
+    :class:`.SparseObservable` now supports matrix multiplication using the
+    :meth:`~.SparseObservable.compose` method, similar to other :mod:`.quantum_info` classes.
