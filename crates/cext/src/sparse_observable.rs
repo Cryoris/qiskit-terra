@@ -597,6 +597,39 @@ pub unsafe extern "C" fn qk_obs_multiply(
 }
 
 /// @ingroup QkSparseObservable
+/// Compose (multiply) two observables.
+///
+/// @param right One observable.
+/// @param left The other observable.
+///
+/// @return ``right.compose(left)`` which equals the observable ``result = left @ right``,
+///     in terms of the matrix multiplication ``@``.
+///
+/// # Example
+///
+///     QkSparseObservable *left = qk_obs_identity(100);
+///     QkSparseObservable *right = qk_obs_zero(100);
+///     QkSparseObservable *result = qk_obs_compose(right, left);
+///
+/// # Safety
+///
+/// Behavior is undefined if ``left`` or ``right`` are not valid, non-null pointers to
+/// ``QkSparseObservable``\ s.
+#[no_mangle]
+#[cfg(feature = "cbinding")]
+pub unsafe extern "C" fn qk_obs_compose(
+    right: *const SparseObservable,
+    left: *const SparseObservable,
+) -> *mut SparseObservable {
+    // SAFETY: Per documentation, the pointers are non-null and aligned.
+    let right = unsafe { const_ptr_as_ref(right) };
+    let left = unsafe { const_ptr_as_ref(left) };
+
+    let result = right.compose(left);
+    Box::into_raw(Box::new(result))
+}
+
+/// @ingroup QkSparseObservable
 /// Add two observables.
 ///
 /// @param left A pointer to the left observable.

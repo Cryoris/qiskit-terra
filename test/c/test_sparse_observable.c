@@ -86,7 +86,52 @@ int test_add() {
 }
 
 /**
- * Test multiplying two observables.
+ * Test composing two observables.
+ */
+int test_compose() {
+    u_int32_t num_qubits = 100;
+
+    QkSparseObservable *right = qk_obs_zero(num_qubits);
+    complex double coeff = 1;
+    QkBitTerm right_bits[3] = {QkBitTerm_X, QkBitTerm_Y, QkBitTerm_Z};
+    uint32_t right_indices[3] = {0, 1, 2};
+    QkSparseTerm right_term = {coeff, 3, right_bits, right_indices, num_qubits};
+    qk_obs_add_term(right, &right_term);
+
+    QkSparseObservable *left = qk_obs_zero(num_qubits);
+    coeff = 2;
+    QkBitTerm left_bits[3] = {QkBitTerm_Plus, QkBitTerm_X, QkBitTerm_Z};
+    uint32_t left_indices[3] = {0, 1, 3};
+    QkSparseTerm left_term = {coeff, 3, left_bits, left_indices, num_qubits};
+    qk_obs_add_term(left, &left_term);
+
+    QkSparseObservable *result = qk_obs_compose(left, right);
+
+    QkSparseObservable *expected = qk_obs_zero(num_qubits);
+    coeff = -2 * I;
+    QkBitTerm expected_bits[4] = {QkBitTerm_Plus, QkBitTerm_Z, QkBitTerm_Z, QkBitTerm_Z};
+    uint32_t expected_indices[4] = {0, 1, 2, 3};
+    QkSparseTerm expected_term = {coeff, 4, expected_bits, expected_indices, num_qubits};
+    qk_obs_add_term(expected, &expected_term);
+
+    bool is_equal = qk_obs_equal(expected, result);
+
+    qk_obs_print(expected);
+    qk_obs_print(result);
+
+    qk_obs_free(left);
+    qk_obs_free(right);
+    qk_obs_free(result);
+    qk_obs_free(expected);
+
+    if (!is_equal) {
+        return EqualityError;
+    }
+    return Ok;
+}
+
+/**
+ * Test multiplying an observable with a coefficient.
  */
 int test_mult() {
     complex double coeffs[3] = {2, 2 * I, 2 + 2 * I};
@@ -580,6 +625,7 @@ int test_sparse_observable() {
     num_failed += RUN_TEST(test_zero);
     num_failed += RUN_TEST(test_identity);
     num_failed += RUN_TEST(test_add);
+    num_failed += RUN_TEST(test_compose);
     num_failed += RUN_TEST(test_mult);
     num_failed += RUN_TEST(test_canonicalize);
     num_failed += RUN_TEST(test_copy);
