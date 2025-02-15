@@ -204,8 +204,8 @@ fn bit_term_as_pauli(bit: &BitTerm) -> &'static [(bool, Option<BitTerm>)] {
         BitTerm::Z => &[(true, Some(BitTerm::Z))],
         BitTerm::Plus => &[(true, None), (true, Some(BitTerm::X))],
         BitTerm::Minus => &[(true, None), (false, Some(BitTerm::X))],
-        BitTerm::Left => &[(true, None), (true, Some(BitTerm::Y))],
-        BitTerm::Right => &[(true, None), (false, Some(BitTerm::Y))],
+        BitTerm::Right => &[(true, None), (true, Some(BitTerm::Y))],
+        BitTerm::Left => &[(true, None), (false, Some(BitTerm::Y))],
         BitTerm::Zero => &[(true, None), (true, Some(BitTerm::Z))],
         BitTerm::One => &[(true, None), (false, Some(BitTerm::Z))],
     }
@@ -280,25 +280,36 @@ pub enum ArithmeticError {
     MismatchedQubits { left: u32, right: u32 },
 }
 
+/// One part of the type of the iteration value from [PairwiseOrdered].
+///
+/// The struct iterates over two sorted lists, and returns values from the left iterator, the right
+/// iterator, or both simultaneously, depending on some "ordering" key attached to each.  This
+/// `enum` is to pass on the information on which iterator is being returned from.
 enum Paired<T> {
     Left(T),
     Right(T),
     Both(T, T),
 }
-struct PairwiseOrdered<T, I1, I2>
+
+/// An iterator combinator that zip-merges two sorted iterators.
+///
+/// This is created by [pairwise_ordered]; see that method for the description.
+struct PairwiseOrdered<C, T, I1, I2>
 where
-    I1: Iterator<Item = (u32, T)>,
-    I2: Iterator<Item = (u32, T)>,
+    C: Ord,
+    I1: Iterator<Item = (C, T)>,
+    I2: Iterator<Item = (C, T)>,
 {
     left: ::std::iter::Peekable<I1>,
     right: ::std::iter::Peekable<I2>,
 }
-impl<T, I1, I2> Iterator for PairwiseOrdered<T, I1, I2>
+impl<C, T, I1, I2> Iterator for PairwiseOrdered<C, T, I1, I2>
 where
-    I1: Iterator<Item = (u32, T)>,
-    I2: Iterator<Item = (u32, T)>,
+    C: Ord,
+    I1: Iterator<Item = (C, T)>,
+    I2: Iterator<Item = (C, T)>,
 {
-    type Item = (u32, Paired<T>);
+    type Item = (C, Paired<T>);
 
     fn next(&mut self) -> Option<Self::Item> {
         let order = match (self.left.peek(), self.right.peek()) {
@@ -329,13 +340,20 @@ where
         )
     }
 }
-fn pairwise_ordered<T, I1, I2>(
+/// An iterator combinator that zip-merges two sorted iterators.
+///
+/// The two iterators must yield the same items, where each item comprises some totally ordered
+/// index, and an associated value.  Both input iterators must be sorted in terms of the index.  The
+/// output iteration is over 2-tuples, also in sorted order, of the seen ordered index values, and a
+/// [Paired] object indicating which iterator (or both) the values were drawn from.
+fn pairwise_ordered<C, T, I1, I2>(
     left: I1,
     right: I2,
-) -> PairwiseOrdered<T, <I1 as IntoIterator>::IntoIter, <I2 as IntoIterator>::IntoIter>
+) -> PairwiseOrdered<C, T, <I1 as IntoIterator>::IntoIter, <I2 as IntoIterator>::IntoIter>
 where
-    I1: IntoIterator<Item = (u32, T)>,
-    I2: IntoIterator<Item = (u32, T)>,
+    C: Ord,
+    I1: IntoIterator<Item = (C, T)>,
+    I2: IntoIterator<Item = (C, T)>,
 {
     PairwiseOrdered {
         left: left.into_iter().peekable(),
@@ -1221,6 +1239,10 @@ impl ::std::ops::Neg for SparseObservable {
 mod compose {
     use super::*;
 
+    /// An non-scalar entry in the multi-Cartesian product iteration.
+    ///
+    /// Each [MultipleItem] corresponds to a bit index that becomes a summation as part of the
+    /// composition, so the multi-Cartesian product has to keep iterating through it.
     struct MultipleItem {
         /// The index into the full `bit_terms` [Vec] that this item refers to.
         loc: usize,
@@ -1232,8 +1254,9 @@ mod compose {
         slice: &'static [(Complex64, BitTerm)],
     }
 
-    /// Effectively an implementation of the multiple Cartesian-product iterator that produces
-    /// the sum terms that make up the composition of two individual [SparseObservable] terms.
+    /// An implementation of the multiple Cartesian-product iterator that produces the sum terms
+    /// that make up the composition of two individual [SparseObservable] terms.
+    ///
     /// This mutates itself in-place to keep track of the state, which allows us to re-use
     /// partial results and to avoid allocations per item (since we have to copy out of the
     /// buffers to the output [SparseObservable] each time anyway).
@@ -1314,7 +1337,7 @@ mod compose {
                                     slice,
                                 });
                                 self.indices.push(index);
-                                self.coeffs.push(self.coeffs.last().unwrap() * slice[0].0);
+                                self.coeffs.push(Default::default());
                                 self.bit_terms.push(slice[0].1);
                             }
                         }
@@ -1339,8 +1362,12 @@ mod compose {
             }
             if !self.started {
                 self.started = true;
-                // Initialising the struct has to put us in a place where we're already ready to
-                // output the first item, so there's update to do.
+                // Initialising the struct has to put us in a place where the indices and bit terms
+                // are ready, but we still need to initialise the coefficient stack.
+                for (i, item) in self.multiples.iter().enumerate() {
+                    // `item.cur` should always be 0 at this point.
+                    self.coeffs[i + 1] = self.coeffs[i] * item.slice[item.cur].0;
+                }
                 return Some(self.iter_item());
             }
             // The lowest index into `multiples` that didn't overflow as we were updating the
@@ -1620,6 +1647,24 @@ impl From<ArithmeticError> for PyErr {
     }
 }
 
+/// The single-character string label used to represent this term in the :class:`SparseObservable`
+/// alphabet.
+#[pyfunction]
+#[pyo3(name = "label")]
+fn bit_term_label(py: Python, slf: BitTerm) -> &Bound<PyString> {
+    // This doesn't use `py_label` so we can use `intern!`.
+    match slf {
+        BitTerm::X => intern!(py, "X"),
+        BitTerm::Plus => intern!(py, "+"),
+        BitTerm::Minus => intern!(py, "-"),
+        BitTerm::Y => intern!(py, "Y"),
+        BitTerm::Right => intern!(py, "r"),
+        BitTerm::Left => intern!(py, "l"),
+        BitTerm::Z => intern!(py, "Z"),
+        BitTerm::Zero => intern!(py, "0"),
+        BitTerm::One => intern!(py, "1"),
+    }
+}
 /// Construct the Python-space `IntEnum` that represents the same values as the Rust-spce `BitTerm`.
 ///
 /// We don't make `BitTerm` a direct `pyclass` because we want the behaviour of `IntEnum`, which
@@ -1663,6 +1708,11 @@ fn make_py_bit_term(py: Python) -> PyResult<Py<PyType>> {
             .into_py_dict(py)?,
         ),
     )?;
+    let label_property = py
+        .import("builtins")?
+        .getattr("property")?
+        .call1((wrap_pyfunction!(bit_term_label, py)?,))?;
+    obj.setattr("label", label_property)?;
     Ok(obj.downcast_into::<PyType>()?.unbind())
 }
 
@@ -2076,6 +2126,9 @@ impl PySparseTerm {
 ///     contribution by :math:`X`, while the upper two bits are ``00`` for a Pauli operator, ``01``
 ///     for the negative-eigenstate projector, and ``10`` for the positive-eigenstate projector.
 ///
+///     Values
+///     ------
+///
 ///     .. autoattribute:: qiskit.quantum_info::SparseObservable.BitTerm.X
 ///
 ///         The Pauli :math:`X` operator.  Uses the single-letter label ``"X"``.
@@ -2117,6 +2170,11 @@ impl PySparseTerm {
 ///
 ///         The projector to the negative eigenstate of the :math:`Z` operator:
 ///         :math:`\lvert1\rangle\langle1\rvert`.  Uses the single-letter label ``"1"``.
+///
+///     Attributes
+///     ----------
+///
+///     .. autoproperty:: qiskit.quantum_info::SparseObservable.BitTerm.label
 ///
 /// Each of the array-like attributes behaves like a Python sequence.  You can index and slice these
 /// with standard :class:`list`-like semantics.  Slicing an attribute returns a Numpy
@@ -3328,11 +3386,13 @@ impl PySparseObservable {
     /// ever exist, rather than trying to simplify them after the fact.
     ///
     /// Args:
-    ///     other: the observable used to left-multiply ``self`` by.
+    ///     other: the observable used to left-multiply ``self``.
     ///     qargs: if given, the qubits in ``self`` to associated with the qubits in ``other``.  Put
     ///         another way: if this is given, it is similar to a more efficient implementation of::
     ///
     ///             self.compose(other.apply_layout(qargs, self.num_qubits))
+    ///
+    ///         as no temporary observable is created to store the applied-layout form of ``other``.
     ///     front: if ``True``, then right-multiply by ``other`` instead of left-multiplying
     ///         (default ``False``).  The ``qargs`` are still applied to ``other``.  This is most
     ///         useful when ``qargs`` is set, or ``other`` might be an object that must be coerced
