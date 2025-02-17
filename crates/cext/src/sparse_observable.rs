@@ -597,6 +597,35 @@ pub unsafe extern "C" fn qk_obs_multiply(
 }
 
 /// @ingroup QkSparseObservable
+/// Multiply the observable by a complex coefficient inplace.
+///
+/// @param obs A pointer to the observable.
+/// @param coeff The coefficient to multiply the observable with.
+///
+/// # Example
+///
+///     QkSparseObservable *obs = qk_obs_identity(100);
+///     qk_obs_multiply_inplace(obs, 2);
+///
+/// # Safety
+///
+/// Behavior is undefined if any of the following is violated
+/// * ``obs`` is a valid, non-null pointer to a ``QkSparseObservable``
+/// * ``coeff`` is a valid, non-null pointer to a ``complex double``
+#[no_mangle]
+#[cfg(feature = "cbinding")]
+pub unsafe extern "C" fn qk_obs_multiply_inplace(
+    obs: *mut SparseObservable,
+    coeff: *const Complex64,
+) {
+    // SAFETY: Per documentation, the pointers are non-null and aligned.
+    let obs = unsafe { mut_ptr_as_ref(obs) };
+    let coeff = unsafe { const_ptr_as_ref(coeff) };
+
+    *obs *= *coeff;
+}
+
+/// @ingroup QkSparseObservable
 /// Compose (multiply) two observables.
 ///
 /// @param right One observable.
@@ -860,3 +889,8 @@ pub extern "C" fn qk_bitterm_label(bit_term: BitTerm) -> u8 {
         .next()
         .expect("Label has exactly one character") as u8
 }
+
+/// @ingroup SparseObservable
+/// Convert to a Python-space [PySparseObservable].
+/// 
+/// @param obs The C-space 
