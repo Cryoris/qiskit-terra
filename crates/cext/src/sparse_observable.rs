@@ -662,6 +662,34 @@ pub unsafe extern "C" fn qk_obs_add(
 }
 
 /// @ingroup QkSparseObservable
+/// Add two observables.
+///
+/// @param left A pointer to the left observable.
+/// @param right A pointer to the right observable.
+///
+/// @return A pointer to the result ``left + right``.
+///
+/// # Example
+///
+///     QkSparseObservable *left = qk_obs_identity(100);
+///     QkSparseObservable *right = qk_obs_zero(100);
+///     QkSparseObservable *result = qk_obs_add(left, right);
+///
+/// # Safety
+///
+/// Behavior is undefined if ``left`` or ``right`` are not valid, non-null pointers to
+/// ``QkSparseObservable``\ s.
+#[no_mangle]
+#[cfg(feature = "cbinding")]
+pub unsafe extern "C" fn qk_obs_append(obs: *mut SparseObservable, other: *const SparseObservable) {
+    // SAFETY: Per documentation, the pointers are non-null and aligned.
+    let obs = unsafe { mut_ptr_as_ref(obs) };
+    let other = unsafe { const_ptr_as_ref(other) };
+
+    *obs += other;
+}
+
+/// @ingroup QkSparseObservable
 /// Calculate the canonical representation of the observable.
 ///
 /// @param obs A pointer to the observable.
