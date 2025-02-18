@@ -131,6 +131,19 @@ from qiskit.compiler import transpile
 from qiskit.transpiler.preset_passmanagers import generate_preset_pass_manager
 from .version import __version__
 
+
+def get_rustlib() -> str:
+    """Get the path to the compiled Rust library object.
+
+    This shared library object must be linked to C libraries that interact with Qiskit Python
+    objects, to ensure all objects are built from the same binary.
+
+    Returns:
+        The path.
+    """
+    return _accelerate.__file__
+
+
 __all__ = [
     "AncillaRegister",
     "ClassicalRegister",
