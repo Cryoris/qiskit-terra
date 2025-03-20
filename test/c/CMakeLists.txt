@@ -3,15 +3,21 @@
 # https://cmake.org/cmake/help/book/mastering-cmake/chapter/Testing%20With%20CMake%20and%20CTest.html
 cmake_minimum_required (VERSION 3.27)
 
-# All files in this directory (non-recursively! use GLOB_RECURSE if that becomes
-# necessary) which match the pattern `test_*.c` are discovered as test files by
+# All files in this directory which match the pattern `test_*.c` are discovered as test files by
 # the command below. All paths are stored relative to the location of this file.
 file (
-    GLOB discovered_tests
-    LIST_DIRECTORIES FALSE
+    GLOB_RECURSE discovered_tests
+    # LIST_DIRECTORIES FALSE
     RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}
     test_*.c
 )
+# Note: we exclude the build directory which contains artifacts.
+foreach (test ${discovered_tests})
+    string (FIND ${test} "build/" is_artifact)
+    if (NOT ${is_artifact} EQUAL -1)
+        list (REMOVE_ITEM discovered_tests ${test})
+    endif ()
+endforeach (test)
 
 # The following creates a test driver program which gathers all discovered test
 # files into a single executable. This has the benefit that a single test
