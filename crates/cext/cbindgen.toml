@@ -1,21 +1,28 @@
 include_version = true
-include_guard = "QISKIT_H_INCLUDED"
+include_guard = "QISKIT_H"
+cpp_compat = true
 style = "type"
-sys_includes = ["complex.h"]
 after_includes = """
 #ifdef QISKIT_C_PYTHON_INTERFACE
     #include <Python.h>
 #endif
 
-// Complex number typedefs -- note these are memory aligned but
-// not calling convention compatible. 
+// Complex number typedefs -- note these are memory aligned but not calling convention compatible.
+// This deals with different imports and standards in C (both C99 and MSVC) and C++.
+#ifdef __cplusplus
+#include <complex>
+typedef std::complex<float> QkComplex32;
+typedef std::complex<double> QkComplex64;
+#else
+#include <complex.h>
 #ifdef _MSC_VER
 typedef _Fcomplex QkComplex32;
 typedef _Dcomplex QkComplex64;
 #else
 typedef float complex QkComplex32;
 typedef double complex QkComplex64;
-#endif
+#endif // _MSC_VER
+#endif // __cplusplus
 
 // Always expose [cfg(feature = "cbinding")] -- workaround for
 // https://github.com/mozilla/cbindgen/issues/995
