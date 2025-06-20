@@ -181,7 +181,7 @@ fn _get_evolution_layer<'a>(
             let evo = pauli_evolution::sparse_term_evolution(
                 pauli,
                 indices.into_iter().rev().collect(),
-                multiply_param(&angle, alpha, py),
+                multiply_param(&angle, alpha),
                 true,
                 false,
             );
@@ -201,12 +201,12 @@ fn _default_reduce(py: Python, parameters: Vec<Param>) -> Param {
         parameters[0].clone()
     } else {
         let acc = parameters.iter().fold(Param::Float(1.0), |acc, param| {
-            multiply_params(acc, add_param(param, -PI, py), py)
+            multiply_params(acc, add_param(param, -PI))
         });
         if parameters.len() % 2 == 0 {
             acc
         } else {
-            multiply_param(&acc, -1.0, py) // take care of parity
+            multiply_param(&acc, -1.0) // take care of parity
         }
     }
 }

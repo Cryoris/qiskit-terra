@@ -88,7 +88,7 @@ fn qiskit_rotation_gate(py: Python, paulis: &PauliSet, i: usize, angle: &Param) 
             // We need to negate the angle when there is a phase.
             let param = match phase {
                 false => angle.clone(),
-                true => multiply_param(angle, -1.0, py),
+                true => multiply_param(angle, -1.0),
             };
             return (standard_gate, smallvec![param], smallvec![Qubit(q as u32)]);
         }
@@ -191,7 +191,7 @@ fn inject_rotations(
         if pauli_support_size == 0 {
             // in case of an all-identity rotation, update global phase by subtracting
             // the angle
-            global_phase = radd_param(global_phase, multiply_param(&angles[i], -0.5, py), py);
+            global_phase = radd_param(global_phase, multiply_param(&angles[i], -0.5));
             hit_paulis[i] = true;
             dag.remove_node(i);
         } else if pauli_support_size == 1 && dag.is_front_node(i) {

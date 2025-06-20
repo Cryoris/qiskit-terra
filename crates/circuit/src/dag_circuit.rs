@@ -32,6 +32,7 @@ use crate::interner::{Interned, InternedMap, Interner};
 use crate::object_registry::ObjectRegistry;
 use crate::operations::{ArrayType, Operation, OperationRef, Param, PyInstruction, StandardGate};
 use crate::packed_instruction::{PackedInstruction, PackedOperation};
+use crate::parameter::symbol_expr::Value;
 use crate::register_data::RegisterData;
 use crate::rustworkx_core_vnext::isomorphism;
 use crate::slice::PySequenceIndex;
@@ -1935,21 +1936,26 @@ impl DAGCircuit {
         let phase_is_close = |self_phase: f64, other_phase: f64| -> bool {
             ((self_phase - other_phase + PI).rem_euclid(2. * PI) - PI).abs() <= 1.0e-10
         };
+        // Try normalizing Param to Param::Float, otherwise leave as is
         let normalize_param = |param: &Param| {
             if let Param::ParameterExpression(ob) = param {
-                ob.bind(py)
-                    .call_method0(intern!(py, "numeric"))
-                    .ok()
-                    .map(|ob| ob.extract::<Param>())
-                    .unwrap_or_else(|| Ok(param.clone()))
+                if let Some(value) = ob.eval(true) {
+                    match value {
+                        Value::Int(i) => Param::Float(i as f64),
+                        Value::Real(r) => Param::Float(r),
+                        _ => param.clone(),
+                    }
+                } else {
+                    param.clone()
+                }
             } else {
-                Ok(param.clone())
+                param.clone()
             }
         };
 
         let phase_eq = match [
-            normalize_param(&self.global_phase)?,
-            normalize_param(&other.global_phase)?,
+            normalize_param(&self.global_phase),
+            normalize_param(&other.global_phase),
         ] {
             [Param::Float(self_phase), Param::Float(other_phase)] => {
                 Ok(phase_is_close(self_phase, other_phase))

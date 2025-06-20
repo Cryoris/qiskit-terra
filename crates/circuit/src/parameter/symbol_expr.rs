@@ -11,6 +11,7 @@
 // that they have been altered from the originals.
 
 use hashbrown::{HashMap, HashSet};
+use pyo3::exceptions::PyTypeError;
 use pyo3::exceptions::PyValueError;
 use pyo3::types::PyString;
 use std::cmp::Ordering;
@@ -23,6 +24,8 @@ use uuid::Uuid;
 
 use num_complex::Complex64;
 use pyo3::prelude::*;
+
+use crate::parameter::parameter_expression::PyParameter;
 
 use super::parameter_expression::PyParameterExpression;
 
@@ -142,6 +145,39 @@ pub enum SymbolExpr {
         lhs: Box<SymbolExpr>,
         rhs: Box<SymbolExpr>,
     },
+}
+
+impl<'py> IntoPyObject<'py> for SymbolExpr {
+    type Target = PyParameterExpression;
+    type Output = Bound<'py, Self::Target>;
+    type Error = PyErr;
+
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        PyParameterExpression::new(self).into_pyobject(py)
+    }
+}
+
+impl<'py> IntoPyObject<'py> for &SymbolExpr {
+    type Target = PyParameterExpression;
+    type Output = Bound<'py, Self::Target>;
+    type Error = PyErr;
+
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        self.clone().into_pyobject(py)
+    }
+}
+
+impl<'py> FromPyObject<'py> for SymbolExpr {
+    fn extract_bound(ob: &Bound<'py, PyAny>) -> PyResult<Self> {
+        // todo: this *might* need handling paramvectorelement, too?
+        if let Ok(param) = ob.extract::<PyParameter>() {
+            Ok(SymbolExpr::Symbol(param.symbol.clone()))
+        } else if let Ok(expr) = ob.extract::<PyParameterExpression>() {
+            Ok(expr.into_expr())
+        } else {
+            Err(PyTypeError::new_err("Cannot extract SymbolExpr from PyAny"))
+        }
+    }
 }
 
 /// Value type, can be integer, real or complex number
@@ -468,6 +504,10 @@ impl fmt::Display for SymbolExpr {
 /// SymbolExpr implementation
 /// ==================================
 impl SymbolExpr {
+    pub fn from_f64(value: f64) -> Self {
+        Self::Value(Value::Real(value))
+    }
+
     /// bind value to symbol node
     pub fn bind(&self, maps: &HashMap<Symbol, Value>) -> SymbolExpr {
         match self {

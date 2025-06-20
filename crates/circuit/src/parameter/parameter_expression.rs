@@ -133,6 +133,10 @@ impl PyParameterExpression {
         }
     }
 
+    pub fn into_expr(&self) -> SymbolExpr {
+        self.expr.clone()
+    }
+
     pub fn sin(&self) -> Self {
         Self {
             expr: self.expr.sin(),

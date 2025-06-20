@@ -376,21 +376,21 @@ impl CircuitInstruction {
                 return Ok(false);
             }
             for (left, right) in left.iter().zip(right) {
-                let eq = match left {
-                    Param::Float(left) => match right {
-                        Param::Float(right) => left == right,
-                        Param::ParameterExpression(right) | Param::Obj(right) => {
-                            right.bind(py).eq(left)?
-                        }
-                    },
-                    Param::ParameterExpression(left) | Param::Obj(left) => match right {
-                        Param::Float(right) => left.bind(py).eq(right)?,
-                        Param::ParameterExpression(right) | Param::Obj(right) => {
-                            left.bind(py).eq(right)?
-                        }
-                    },
-                };
-                if !eq {
+                // let eq = match left {
+                //     Param::Float(left) => match right {
+                //         Param::Float(right) => left == right,
+                //         Param::ParameterExpression(right) | Param::Obj(right) => {
+                //             right.bind(py).eq(left)?
+                //         }
+                //     },
+                //     Param::ParameterExpression(left) | Param::Obj(left) => match right {
+                //         Param::Float(right) => left.bind(py).eq(right)?,
+                //         Param::ParameterExpression(right) | Param::Obj(right) => {
+                //             left.bind(py).eq(right)?
+                //         }
+                //     },
+                // };
+                if !right.eq(py, left)? {
                     return Ok(false);
                 }
             }
