@@ -23,6 +23,7 @@ use pyo3::types::{PyList, PySet};
 use pyo3::{import_exception, intern, PyTraverseError, PyVisit};
 
 use crate::imports::UUID;
+use crate::parameter::symbol_expr::Symbol;
 
 import_exception!(qiskit.circuit, CircuitError);
 
@@ -79,8 +80,13 @@ pub struct ParameterUuid(u128);
 impl ParameterUuid {
     /// Extract a UUID from a Python-space `Parameter` object. This assumes that the object is known
     /// to be a parameter.
+    /// TODO We should be able to remove this
     pub fn from_parameter(ob: &Bound<PyAny>) -> PyResult<Self> {
         ob.getattr(intern!(ob.py(), "uuid"))?.extract()
+    }
+
+    pub fn from_symbol(symbol: &Symbol) -> Self {
+        Self(symbol.py_uuid())
     }
 }
 
@@ -154,6 +160,8 @@ impl ParameterTable {
     /// The no-use form is useful when doing parameter assignments from Rust space, where the
     /// replacement is itself parametric; the replacement can be extracted once, then subsequent
     /// lookups and updates done without interaction with Python.
+    ///
+    /// TODO we should be able to remove this
     pub fn track(
         &mut self,
         param_ob: &Bound<PyAny>,

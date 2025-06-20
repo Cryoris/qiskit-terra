@@ -1116,38 +1116,31 @@ impl CircuitData {
     #[setter]
     pub fn set_global_phase(&mut self, angle: Param) -> PyResult<()> {
         if let Param::ParameterExpression(expr) = &self.global_phase {
-            Python::with_gil(|py| -> PyResult<()> {
-                for param_ob in expr
-                    .bind(py)
-                    .getattr(intern!(py, "parameters"))?
-                    .try_iter()?
-                {
-                    match self.param_table.remove_use(
-                        ParameterUuid::from_parameter(&param_ob?)?,
-                        ParameterUse::GlobalPhase,
-                    ) {
-                        Ok(_)
-                        | Err(ParameterTableError::ParameterNotTracked(_))
-                        | Err(ParameterTableError::UsageNotTracked(_)) => (),
-                        // Any errors added later might want propagating.
-                    }
+            for symbol in expr.parameters().iter() {
+                match self.param_table.remove_use(
+                    ParameterUuid::from_symbol(symbol),
+                    ParameterUse::GlobalPhase,
+                ) {
+                    Ok(_)
+                    | Err(ParameterTableError::ParameterNotTracked(_))
+                    | Err(ParameterTableError::UsageNotTracked(_)) => (),
+                    // Any errors added later might want propagating.
                 }
-                Ok(())
-            })?;
-        }
+            }
+        };
         match angle {
             Param::Float(angle) => {
                 self.global_phase = Param::Float(angle.rem_euclid(2. * std::f64::consts::PI));
                 Ok(())
             }
-            Param::ParameterExpression(_) => Python::with_gil(|py| -> PyResult<()> {
-                for param_ob in angle.iter_parameters(py)? {
+            Param::ParameterExpression(expr) => {
+                for param_ob in expr.parameters().iter() {
                     self.param_table
-                        .track(&param_ob?, Some(ParameterUse::GlobalPhase))?;
+                        .track(param_ob, Some(ParameterUse::GlobalPhase))?;
                 }
                 self.global_phase = angle;
                 Ok(())
-            }),
+            }
             Param::Obj(_) => Err(PyTypeError::new_err("invalid type for global phase")),
         }
     }
