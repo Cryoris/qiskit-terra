@@ -82,6 +82,8 @@ impl Symbol {
     }
 }
 
+impl<'py> IntoPyObject
+
 #[pymethods]
 impl Symbol {
     #[new]

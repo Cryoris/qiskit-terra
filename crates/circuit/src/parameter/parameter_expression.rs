@@ -873,7 +873,7 @@ impl Hash for PyParameter {
 }
 
 impl PyParameter {
-    fn from_symbol(symbol: &Symbol) -> PyClassInitializer<Self> {
+    pub fn from_symbol(symbol: &Symbol) -> PyClassInitializer<Self> {
         let expr = SymbolExpr::Symbol(symbol.clone());
 
         let py_parameter = Self {
