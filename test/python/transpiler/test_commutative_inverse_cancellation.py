@@ -313,7 +313,7 @@ class TestCommutativeInverseCancellation(QiskitTestCase):
         circuit.cx(0, 1)
         circuit.rz(np.pi / 3, 2)
         circuit.cx(2, 1)
-        circuit.rz(np.pi / 3, 2)
+        circuit.rx(np.pi / 3, 2)
         circuit.t(2)
         circuit.s(2)
         circuit.x(1)
@@ -326,7 +326,7 @@ class TestCommutativeInverseCancellation(QiskitTestCase):
         expected = QuantumCircuit(3)
         expected.rz(np.pi / 3, 2)
         expected.cx(2, 1)
-        expected.rz(np.pi / 3, 2)
+        expected.rx(np.pi / 3, 2)
         expected.t(2)
         expected.s(2)
 
@@ -455,7 +455,7 @@ class TestCommutativeInverseCancellation(QiskitTestCase):
         self.assertNotIn("rx", gates_after)
 
     @data(False, True)
-    def test_non_inverse_do_not_cancel(self, matrix_based):
+    def test_consecutive_accumulation(self, matrix_based):
         """Test that non-inverse gate pairs do not cancel."""
         circuit = QuantumCircuit(2, 2)
         circuit.rx(np.pi / 4, 0)
@@ -463,10 +463,31 @@ class TestCommutativeInverseCancellation(QiskitTestCase):
 
         passmanager = PassManager(CommutativeInverseCancellation(matrix_based=matrix_based))
         new_circuit = passmanager.run(circuit)
-        gates_after = new_circuit.count_ops()
 
-        self.assertIn("rx", gates_after)
-        self.assertEqual(gates_after["rx"], 2)
+        expected = QuantumCircuit(2, 2)
+        expected.rx(np.pi / 2, 0)
+
+        self.assertEqual(expected, new_circuit)
+
+    @data(False, True)
+    def test_accumulation_through_commutation(self, matrix_based):
+        """Test that non-inverse gate pairs do not cancel."""
+        circuit = QuantumCircuit(3)
+        circuit.rx(np.pi / 4, 0)
+        circuit.rzz(-0.1, 1, 2)
+        circuit.ccx(1, 2, 0)
+        circuit.rx(np.pi / 4, 0)
+        circuit.rzz(0.2, 1, 2)
+
+        passmanager = PassManager(CommutativeInverseCancellation(matrix_based=matrix_based))
+        new_circuit = passmanager.run(circuit)
+
+        expected = QuantumCircuit(3)
+        expected.ccx(1, 2, 0)
+        expected.rx(np.pi / 2, 0)
+        expected.rzz(0.1, 1, 2)
+
+        self.assertEqual(expected, new_circuit)
 
     @data(False, True)
     def test_non_consecutive_gates(self, matrix_based):

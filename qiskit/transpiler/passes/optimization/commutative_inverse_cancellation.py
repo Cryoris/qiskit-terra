@@ -11,8 +11,12 @@
 # that they have been altered from the originals.
 
 """Cancel pairs of inverse gates exploiting commutation relations."""
+
+from __future__ import annotations
 from qiskit.circuit.commutation_library import SessionCommutationChecker as scc
 
+from qiskit.circuit import CircuitInstruction
+from qiskit.circuit.library import PauliEvolutionGate
 from qiskit.dagcircuit import DAGCircuit, DAGOpNode
 from qiskit.quantum_info import Operator
 from qiskit.quantum_info.operators.predicates import matrix_equal
@@ -92,49 +96,98 @@ class CommutativeInverseCancellation(TransformationPass):
 
         circ_size = len(topo_sorted_nodes)
 
-        removed = [False for _ in range(circ_size)]
-
+        # we store an action for a node:
+        #  * None: keep node as is
+        #  * False: remove the node
+        #  * CircuitInstruction: an updated instruction to put at the node's place
+        actions = [None for _ in range(circ_size)]
         phase_update = 0
 
         for idx1 in range(0, circ_size):
-            if self._skip_node(topo_sorted_nodes[idx1]):
+            node1 = topo_sorted_nodes[idx1]
+            if self._skip_node(node1):
                 continue
 
-            matched_idx2 = -1
-
             for idx2 in range(idx1 - 1, -1, -1):
-                if removed[idx2]:
+                if actions[idx2] is False:
                     continue
+                node2 = topo_sorted_nodes[idx2]
 
                 if (
-                    not self._skip_node(topo_sorted_nodes[idx2])
-                    and topo_sorted_nodes[idx2].qargs == topo_sorted_nodes[idx1].qargs
-                    and topo_sorted_nodes[idx2].cargs == topo_sorted_nodes[idx1].cargs
+                    not self._skip_node(node2)
+                    and node2.qargs == node1.qargs
+                    and node2.cargs == node1.cargs
                 ):
-                    is_inverse, phase = self._check_inverse(
-                        topo_sorted_nodes[idx1], topo_sorted_nodes[idx2]
-                    )
+                    # check for inverse
+                    is_inverse, phase = self._check_inverse(node1, node2)
                     if is_inverse:
                         phase_update += phase
-                        matched_idx2 = idx2
+                        actions[idx1] = False
+                        actions[idx2] = False
+                        break
+
+                    # check for merging
+                    if (merged := _check_merge(node1, node2)) is not None:
+                        actions[idx1] = merged  # update parameters
+                        actions[idx2] = False  # remove
                         break
 
                 if not self.comm_checker.commute_nodes(
-                    topo_sorted_nodes[idx1],
-                    topo_sorted_nodes[idx2],
+                    node1,
+                    node2,
                     max_num_qubits=self._max_qubits,
                 ):
                     break
 
-            if matched_idx2 != -1:
-                removed[idx1] = True
-                removed[matched_idx2] = True
-
-        for idx in range(circ_size):
-            if removed[idx]:
-                dag.remove_op_node(topo_sorted_nodes[idx])
+        out = dag.copy_empty_like()
+        for idx, action in enumerate(actions):
+            if action is None:
+                # we did nothing to the node, keep it
+                node = topo_sorted_nodes[idx]
+                out.apply_operation_back(node.op, node.qargs, node.cargs)
+            elif action is False:
+                # the node is to be removed
+                pass
+            else:
+                # the node has updated parameters
+                out.apply_operation_back(action.operation, action.qubits, action.clbits)
 
         if phase_update != 0:
-            dag.global_phase += phase_update
+            out.global_phase += phase_update
 
-        return dag
+        return out
+
+
+def _check_merge(node1: DAGOpNode, node2: DAGOpNode) -> CircuitInstruction | None:
+    # standard Pauli rotations to merge
+    symmetric_rotations = {"p", "rx", "ry", "rz", "rxx", "ryy", "rzz"}
+    asymmetric_rotations = {"crx", "cry", "crz", "cp", "rzx"}
+
+    if node1.name == node2.name:
+        # in symmetric rotations we do not care about the qargs
+        # for asymmetric rotations we need to check the qargs are the same
+        if node1.name in symmetric_rotations | asymmetric_rotations:
+            joined_angle = node1.op.params[0] + node2.op.params[0]
+            operation = node1.op.__class__(joined_angle)
+            instruction = CircuitInstruction(operation, node1.qargs, node1.cargs)
+
+            return instruction
+
+        # allow Pauli evolutions to be merged, if the operators match and if the
+        # synthesis is not set
+        if node1.name == "PauliEvolution":
+            evo1 = node1.op
+            evo2 = node2.op
+            if (
+                evo1.operator == evo2.operator
+                and evo1._synthesis is None
+                and evo2._synthesis is None
+            ):
+                time = evo1.time + evo2.time
+                joined_evo = PauliEvolutionGate(evo1.operator, time)
+                instruction = CircuitInstruction(joined_evo, node1.qargs, node2.cargs)
+
+                return instruction
+
+    # nothing merged, just return None (which means not to do anything to the node)
+    return None

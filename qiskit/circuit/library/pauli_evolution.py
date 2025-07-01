@@ -126,13 +126,23 @@ class PauliEvolutionGate(Gate):
         super().__init__(name="PauliEvolution", num_qubits=num_qubits, params=[time], label=label)
         self.operator = operator
 
-        if synthesis is None:
+        self._synthesis = synthesis
+
+    @property
+    def synthesis(self) -> EvolutionSynthesis:
+        """The synthesis method."""
+        if self._synthesis is None:
             # pylint: disable=cyclic-import
             from qiskit.synthesis.evolution import LieTrotter
 
-            synthesis = LieTrotter()
+            return LieTrotter()
 
-        self.synthesis = synthesis
+        return self._synthesis
+
+    @synthesis.setter
+    def synthesis(self, synthesis: EvolutionSynthesis | None) -> None:
+        """Set the synthesis method."""
+        self._synthesis = synthesis
 
     @property
     def time(self) -> ParameterValueType:
