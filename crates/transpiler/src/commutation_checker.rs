@@ -16,8 +16,12 @@ use ndarray::Array2;
 use num_complex::Complex64;
 use num_complex::ComplexFloat;
 use qiskit_circuit::object_registry::PyObjectAsKey;
+use qiskit_quantum_info::pauli_lindblad_map::qubit_sparse_pauli::InnerReadError;
+use qiskit_quantum_info::sparse_observable::PySparseObservable;
+use qiskit_quantum_info::sparse_observable::SparseObservable;
 use smallvec::SmallVec;
 use std::fmt::Debug;
+use std::ops::Deref;
 
 use numpy::PyReadonlyArray2;
 use pyo3::exceptions::PyRuntimeError;
@@ -353,6 +357,10 @@ impl CommutationChecker {
             (qargs1, qargs2)
         };
 
+        if first_op.name() == "PauliEvolution" && second_op.name() == "PauliEvolution" {
+            return pauli_check(py, &first_op, &first_qargs, &second_op, &second_qargs, tol);
+        }
+
         // For our cache to work correctly, we require the gate's definition to only depend on the
         // ``params`` attribute. This cannot be guaranteed for custom gates, so we only check
         // the cache for
@@ -572,6 +580,10 @@ fn commutation_precheck(
         }
     }
 
+    if op1.name() == "PauliEvolution" && op2.name() == "PauliEvolution" {
+        return None;
+    }
+
     if matches!(
         op1,
         OperationRef::StandardInstruction(_) | OperationRef::Instruction(_)
@@ -678,6 +690,46 @@ fn get_relative_placement(
         .iter()
         .map(|q_g0| qubits_g2.get(q_g0).copied())
         .collect()
+}
+
+fn pauli_check(
+    py: Python,
+    gate1: &OperationRef,
+    qargs1: &[Qubit],
+    gate2: &OperationRef,
+    qargs2: &[Qubit],
+    tol: f64,
+) -> PyResult<bool> {
+    // extract the Python gates
+    let gate1 = if let OperationRef::Gate(py_op1) = gate1 {
+        py_op1
+    } else {
+        panic!("Gate called PauliEvolution should be a Python PauliEvolutionGate")
+    };
+    let gate2 = if let OperationRef::Gate(py_op2) = gate2 {
+        py_op2
+    } else {
+        panic!("Gate called PauliEvolution should be a Python PauliEvolutionGate")
+    };
+
+    let py_op1 = gate1.gate.getattr(py, intern!(py, "operator"))?;
+    let py_op1 = py_op1.downcast_bound::<PySparseObservable>(py)?;
+    let py_op2 = gate2.gate.getattr(py, intern!(py, "operator"))?;
+    let py_op2 = py_op2.downcast_bound::<PySparseObservable>(py)?;
+
+    let py_op1_borrowed = py_op1.borrow();
+    let py_op2_borrowed = py_op2.borrow();
+    let op1 = py_op1_borrowed.inner.read().map_err(|_| InnerReadError)?;
+    let op2 = py_op2_borrowed.inner.read().map_err(|_| InnerReadError)?;
+
+    let num_qubits = (qargs1.iter().max()).max(qargs2.iter().max()).unwrap().0 + 1;
+    let expanded1 = SparseObservable::identity(num_qubits)
+        .compose_map(op1.deref(), |index| qargs1[index as usize].0);
+    let expanded2 = SparseObservable::identity(num_qubits)
+        .compose_map(op2.deref(), |index| qargs2[index as usize].0);
+
+    let commutator = (&expanded1).compose(&expanded2) - &(&expanded2).compose(&expanded1);
+    Ok(commutator.canonicalize(tol).is_zero())
 }
 
 #[derive(Clone, Debug)]

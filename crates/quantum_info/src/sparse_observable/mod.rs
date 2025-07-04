@@ -1056,6 +1056,14 @@ impl SparseObservable {
             Ok(())
         }
     }
+
+    /// Check if the observable is the zero observable.
+    ///
+    /// This does not simplify the observable beforehand. To cut off coefficients below a
+    /// tolerance or merge terms, call [Self::canonicalize] before this method.
+    pub fn is_zero(&self) -> bool {
+        self.bit_terms.is_empty()
+    }
 }
 
 impl ::std::ops::Add<&SparseObservable> for SparseObservable {
@@ -2412,8 +2420,15 @@ impl PySparseTerm {
 #[derive(Debug)]
 pub struct PySparseObservable {
     // This class keeps a pointer to a pure Rust-SparseTerm and serves as interface from Python.
-    inner: Arc<RwLock<SparseObservable>>,
+    pub inner: Arc<RwLock<SparseObservable>>,
 }
+
+// impl PySparseObservable {
+//     pub fn inner(&self) -> Result<RwLockReadGuard<SparseObservable>, InnerReadError> {
+//         self.inner.read().map_err(|_| InnerReadError)
+//     }
+// }
+
 #[pymethods]
 impl PySparseObservable {
     #[pyo3(signature = (data, /, num_qubits=None))]
@@ -2696,7 +2711,7 @@ impl PySparseObservable {
     ///         and their corresponding coefficients.
     #[staticmethod]
     #[pyo3(signature = (label, /))]
-    fn from_label(label: &str) -> Result<Self, LabelError> {
+    pub fn from_label(label: &str) -> Result<Self, LabelError> {
         let mut inner = SparseObservable::zero(label.len() as u32);
         inner.add_dense_label(label, Complex64::new(1.0, 0.0))?;
         Ok(inner.into())
@@ -3410,7 +3425,7 @@ impl PySparseObservable {
     ///         useful when ``qargs`` is set, or ``other`` might be an object that must be coerced
     ///         to :class:`SparseObservable`.
     #[pyo3(signature = (other, /, qargs=None, *, front=false))]
-    fn compose<'py>(
+    pub fn compose<'py>(
         &self,
         other: &Bound<'py, PyAny>,
         qargs: Option<&Bound<'py, PyAny>>,
@@ -3895,6 +3910,7 @@ impl From<SparseObservable> for PySparseObservable {
         }
     }
 }
+
 impl<'py> IntoPyObject<'py> for SparseObservable {
     type Target = PySparseObservable;
     type Output = Bound<'py, Self::Target>;

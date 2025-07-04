@@ -42,6 +42,7 @@ from qiskit.circuit.library import (
     MCXGate,
     Measure,
     PauliGate,
+    PauliEvolutionGate,
     PhaseGate,
     Reset,
     RGate,
@@ -61,6 +62,7 @@ from qiskit.circuit.library import (
     UGate,
 )
 from qiskit.dagcircuit import DAGOpNode
+from qiskit.quantum_info import SparseObservable
 
 ROTATION_GATES = [
     RXGate,
@@ -497,6 +499,17 @@ class TestCommutationChecker(QiskitTestCase):
         self.assertTrue(
             scc.commute(almost_identity, [0], [], other, [0], [], approximation_degree=1 - 1e-4)
         )
+
+    def test_pauli_evolution_gate(self):
+        """Test Pauli evolution gate commutations."""
+        p1 = SparseObservable.from_label("IIIIIIIXYY")
+        p2 = SparseObservable.from_label("IIIIIIIXZZ")  # should commute with p1
+        p3 = SparseObservable.from_label("IIIIIIIZZZ")  # should not commute with p1
+
+        evos = [PauliEvolutionGate(p) for p in [p1, p2, p3]]
+        qubits = list(range(10))
+        self.assertTrue(scc.commute(evos[0], qubits, [], evos[1], qubits, [], max_num_qubits=12))
+        self.assertFalse(scc.commute(evos[0], qubits, [], evos[2], qubits, [], max_num_qubits=12))
 
 
 if __name__ == "__main__":

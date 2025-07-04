@@ -17,6 +17,7 @@ mod evolution;
 pub mod linalg;
 pub mod linear;
 pub mod linear_phase;
+pub mod litinski_transformation;
 mod multi_controlled;
 mod permutation;
 mod qft;
