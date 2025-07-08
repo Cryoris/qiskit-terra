@@ -20,7 +20,7 @@ use qiskit_circuit::Clbit;
 use qiskit_circuit::Qubit;
 use std::f64::consts::{FRAC_PI_2, PI};
 
-use qiskit_circuit::imports::PAULI_EVOLUTION_GATE;
+use qiskit_circuit::imports::{PAULI_EVOLUTION_GATE, PAULI_MEASURE};
 use qiskit_quantum_info::sparse_observable::PySparseObservable;
 
 use pyo3::prelude::*;
@@ -52,7 +52,9 @@ pub fn to_pbc(py: Python, circuit: &CircuitData) -> PyResult<CircuitData> {
     // and keep track of the rotation angles in a separate list
     let nq = circuit.num_qubits();
     let mut rustiq_circuit: Vec<(String, Vec<usize>)> = Vec::new();
-    let mut angles: Vec<f64> = Vec::new();
+    let mut angles: Vec<Option<f64>> = Vec::new();
+    let mut clbits: Vec<Clbit> = Vec::new();
+    let interner = circuit.cargs_interner();
 
     for inst in circuit.iter() {
         let name = inst.op.name();
@@ -73,6 +75,7 @@ pub fn to_pbc(py: Python, circuit: &CircuitData) -> PyResult<CircuitData> {
                 Param::Float(angle) => try_rz_to_clifford(angle, 1e-10),
                 _ => unreachable!("RZ must have a parameter"),
             },
+            "measure" => ("RZ", None), // handle measure as RZ, marking it with a None angle
             _ => {
                 return Err(CircuitError::new_err(format!(
                     "The gate {name:?} is not supported in Rustiq."
@@ -85,8 +88,14 @@ pub fn to_pbc(py: Python, circuit: &CircuitData) -> PyResult<CircuitData> {
             .iter()
             .map(|q| q.index())
             .collect();
+
+        if name == "measure" {
+            let bits = interner.get(inst.clbits);
+            clbits.push(*bits.get(0).expect("No clbit found, expected one!"));
+        }
+
         rustiq_circuit.push((rustiq_name.to_string(), qubits));
-        if let Some(angle) = angle {
+        if rustiq_name == "RZ" {
             angles.push(angle);
         }
     }
@@ -94,11 +103,14 @@ pub fn to_pbc(py: Python, circuit: &CircuitData) -> PyResult<CircuitData> {
     // apply the Litinski transformation
     let (rotations, _clifford) = extract_rotations(&rustiq_circuit, nq);
 
-    // rebuild the Qiskit circuit using PauliEvolutionGates
+    // rebuild the Qiskit circuit using PauliEvolutionGates and PauliMeasure
     let mut new_circuit = CircuitData::clone_empty_like(&circuit, None)?;
 
     let py_evo_cls = PAULI_EVOLUTION_GATE.get_bound(py);
+    let py_meas_cls = PAULI_MEASURE.get_bound(py);
     let no_clbits: Vec<Clbit> = Vec::new();
+    let mut clbit_index = 0usize;
+
     for ((sign, pauli), angle) in rotations.iter().zip(angles) {
         // sparsify the label
         let (qubits, paulis): (Vec<Qubit>, String) = pauli
@@ -110,22 +122,43 @@ pub fn to_pbc(py: Python, circuit: &CircuitData) -> PyResult<CircuitData> {
 
         let py_pauli =
             PySparseObservable::from_label(paulis.chars().rev().collect::<String>().as_str())?;
-        let time = if *sign { -angle } else { angle };
-        let py_evo = py_evo_cls.call1((py_pauli, time))?;
-        let py_gate = PyGate {
-            qubits: qubits.len() as u32,
-            clbits: 0,
-            params: 1,
-            op_name: "PauliEvolution".to_string(),
-            gate: py_evo.into(),
-        };
 
-        new_circuit.push_packed_operation(
-            py_gate.into(),
-            &[Param::Float(time)],
-            &qubits,
-            &no_clbits,
-        );
+        match angle {
+            Some(angle) => {
+                let time = if *sign { -angle } else { angle };
+                let py_evo = py_evo_cls.call1((py_pauli, time))?;
+                let py_gate = PyGate {
+                    qubits: qubits.len() as u32,
+                    clbits: 0,
+                    params: 1,
+                    op_name: "PauliEvolution".to_string(),
+                    gate: py_evo.into(),
+                };
+
+                new_circuit.push_packed_operation(
+                    py_gate.into(),
+                    &[Param::Float(time)],
+                    &qubits,
+                    &no_clbits,
+                );
+            }
+            None => {
+                let py_meas = py_meas_cls.call1((py_pauli,))?;
+                let py_gate = PyGate {
+                    qubits: qubits.len() as u32,
+                    clbits: 1,
+                    params: 1,
+                    op_name: "PauliMeasure".to_string(),
+                    gate: py_meas.into(),
+                };
+
+                // retrieve the classical bit we measured into (we know it's a single one)
+                let clbit = vec![clbits[clbit_index]];
+                clbit_index += 1;
+
+                new_circuit.push_packed_operation(py_gate.into(), &[], &qubits, &clbit);
+            }
+        }
     }
 
     Ok(new_circuit)
