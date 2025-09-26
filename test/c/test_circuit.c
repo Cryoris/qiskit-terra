@@ -12,6 +12,7 @@
 
 #include "common.h"
 #include <complex.h>
+#include <math.h>
 #include <qiskit.h>
 #include <stdbool.h>
 #include <stddef.h>
@@ -730,7 +731,7 @@ cleanup:
 }
 
 /**
- * Test appending a unitary gate.
+ * Test appending a 2q unitary gate.
  */
 static int test_unitary_gate(void) {
     QkCircuit *qc = qk_circuit_new(2, 0);
@@ -780,7 +781,7 @@ cleanup:
 }
 
 /**
- * Test appending a unitary gate.
+ * Test appending a 1q unitary gate.
  */
 static int test_unitary_gate_1q(void) {
     QkCircuit *qc = qk_circuit_new(2, 0);
@@ -828,7 +829,7 @@ cleanup:
 }
 
 /**
- * Test appending a unitary gate.
+ * Test appending a 3q unitary gate.
  */
 static int test_unitary_gate_3q(void) {
     QkCircuit *qc = qk_circuit_new(3, 0);
@@ -915,6 +916,67 @@ cleanup:
     return result;
 }
 
+/**
+ * Test getting instruction parameters.
+ */
+static int test_get_instruction_params(void) {
+    QkCircuit *qc = qk_circuit_new(1, 0);
+    uint32_t q0[1] = {0};
+    double angle[1] = {0.23};
+    QkComplex64 c0 = {0.0, 0.0};
+    QkComplex64 c1 = {1.0, 0.0};
+    QkComplex64 matrix[16] = {c1, c1, c0, c0,  // this
+                              c1, c1, c0, c0,  // is
+                              c0, c0, c1, c0,  // for
+                              c0, c0, c0, c1}; // formatting
+
+    int result = Ok;
+
+    if (qk_circuit_gate(qc, QkGate_SX, q0, NULL) != QkExitCode_Success) {
+        result = RuntimeError;
+        goto cleanup;
+    }
+    if (qk_circuit_gate(qc, QkGate_RX, q0, angle) != QkExitCode_Success) {
+        result = RuntimeError;
+        goto cleanup;
+    }
+    if (qk_circuit_unitary(qc, matrix, q0, 1, false) != QkExitCode_Success) {
+        result = RuntimeError;
+        goto cleanup;
+    }
+
+    QkCircuitInstruction inst;
+
+    // SX has no parameters
+    qk_circuit_get_instruction(qc, 0, &inst);
+    if (inst.num_params != 0) {
+        printf("Expected 0 parameters, got %u", inst.num_params);
+        result = EqualityError;
+        goto cleanup;
+    }
+
+    // RX has one parameter
+    qk_circuit_get_instruction(qc, 1, &inst);
+    if (inst.num_params != 1) {
+        printf("Expected 1 parameter, got %u", inst.num_params);
+        result = EqualityError;
+        goto cleanup;
+    }
+
+    double rz_angle;
+    qk_param_as_real(&rz_angle, inst.params[0]);
+    if (fabs(rz_angle - angle[0]) > 1e-10) {
+        printf("Unexpected parameter value in RX gate");
+        result = EqualityError;
+        goto cleanup;
+    }
+
+cleanup:
+    qk_circuit_instruction_clear(&inst);
+    qk_circuit_free(qc);
+    return result;
+}
+
 static int test_delay_instruction(void) {
     QkCircuit *qc = qk_circuit_new(2, 0);
     int result = Ok;
@@ -952,6 +1014,7 @@ int test_circuit(void) {
     num_failed += RUN_TEST(test_not_unitary_gate);
     num_failed += RUN_TEST(test_unitary_gate_1q);
     num_failed += RUN_TEST(test_unitary_gate_3q);
+    num_failed += RUN_TEST(test_get_instruction_params);
 
     fflush(stderr);
     fprintf(stderr, "=== Number of failed subtests: %i\n", num_failed);

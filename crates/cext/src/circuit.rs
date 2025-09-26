@@ -843,7 +843,8 @@ pub struct CInstruction {
     /// A pointer to an array of clbit indices this instruction operates on.
     clbits: *mut u32,
     /// A pointer to an array of parameter values for this instruction.
-    params: *mut f64,
+    /// Since ``QkParam`` are immutable this is a pointer to ``const QkParam*``.
+    params: *mut *const Param,
     /// The number of qubits for this instruction.
     num_qubits: u32,
     /// The number of clbits for this instruction.
@@ -908,11 +909,11 @@ pub unsafe extern "C" fn qk_circuit_get_instruction(
     };
     let mut params = {
         let params = packed_inst.params_view();
-        let params_vec: Vec<f64> = params
+        let params_vec: Vec<*const Param> = params
             .iter()
             .map(|x| match x {
-                Param::Float(val) => *val,
-                _ => panic!("Invalid parameter on instruction"),
+                Param::Obj(_) => panic!("Invalid parameter on instruction"),
+                _ => x as *const Param,
             })
             .collect();
         params_vec.into_boxed_slice()
@@ -995,7 +996,7 @@ pub unsafe extern "C" fn qk_circuit_instruction_clear(inst: *mut CInstruction) {
         inst.num_clbits = 0;
         if inst.num_params > 0 && !inst.params.is_null() {
             let params = std::slice::from_raw_parts_mut(inst.params, inst.num_params as usize);
-            let _ = Box::from_raw(params as *mut [f64]);
+            let _ = Box::from_raw(params);
             inst.params = std::ptr::null_mut();
         }
         inst.num_params = 0;
