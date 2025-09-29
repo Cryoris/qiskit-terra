@@ -561,27 +561,22 @@ pub unsafe extern "C" fn qk_circuit_gate_param(
     let qargs: &[Qubit] = unsafe {
         match gate.num_qubits() {
             0 => &[],
-
             1 => &[Qubit(*qubits.wrapping_add(0))],
-
             2 => &[
                 Qubit(*qubits.wrapping_add(0)),
                 Qubit(*qubits.wrapping_add(1)),
             ],
-
             3 => &[
                 Qubit(*qubits.wrapping_add(0)),
                 Qubit(*qubits.wrapping_add(1)),
                 Qubit(*qubits.wrapping_add(2)),
             ],
-
             4 => &[
                 Qubit(*qubits.wrapping_add(0)),
                 Qubit(*qubits.wrapping_add(1)),
                 Qubit(*qubits.wrapping_add(2)),
                 Qubit(*qubits.wrapping_add(3)),
             ],
-
             // There are no ``QkGate``s > 4 qubits
             _ => unreachable!(),
         }
@@ -589,7 +584,6 @@ pub unsafe extern "C" fn qk_circuit_gate_param(
 
     // SAFETY: Per documentation, the params pointer is an array of num_params() elements, and
     // each element is a valid, non-null pointer to a Param.
-
     let params: Vec<Param> =
         unsafe { ::std::slice::from_raw_parts(params, gate.num_params() as usize) }
             .iter()
@@ -598,7 +592,6 @@ pub unsafe extern "C" fn qk_circuit_gate_param(
 
     match circuit.push_standard_gate(gate, &params, qargs) {
         Ok(_) => ExitCode::Success,
-
         Err(_) => ExitCode::ParameterError,
     }
 }
