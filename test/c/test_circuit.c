@@ -1046,12 +1046,16 @@ static int test_parameterized_circuit(void) {
     const QkParam *rzz_param[1] = {y};
 
     int result = Ok;
-
-    result = qk_circuit_gate_param(qc, QkGate_RX, q0, rx_param);
-    result = qk_circuit_gate_param(qc, QkGate_RX, q1, rx_param);
-    result = qk_circuit_gate_param(qc, QkGate_RZZ, q01, rzz_param);
-
-    if (result != Ok) {
+    if (qk_circuit_gate_param(qc, QkGate_RX, q0, rx_param) != QkExitCode_Success) {
+        result = RuntimeError;
+        goto cleanup;
+    }
+    if (qk_circuit_gate_param(qc, QkGate_RX, q1, rx_param) != QkExitCode_Success) {
+        result = RuntimeError;
+        goto cleanup;
+    }
+    if (qk_circuit_gate_param(qc, QkGate_RZZ, q01, rzz_param) != QkExitCode_Success) {
+        result = RuntimeError;
         goto cleanup;
     }
 
