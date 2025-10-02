@@ -383,7 +383,7 @@ pub unsafe extern "C" fn qk_circuit_num_clbits(circuit: *const CircuitData) -> u
 /// # Safety
 ///
 /// Behavior is undefined if ``circuit`` is not a valid, non-null pointer to a ``QkCircuit``.
-#[no_mangle]
+#[unsafe(no_mangle)]
 #[cfg(feature = "cbinding")]
 pub unsafe extern "C" fn qk_circuit_num_free_params(circuit: *const CircuitData) -> usize {
     // SAFETY: Per documentation, the pointer is non-null and aligned.
@@ -546,7 +546,7 @@ pub unsafe extern "C" fn qk_circuit_gate(
 /// Behavior is undefined if ``circuit`` is not a valid, non-null pointer to a ``QkCircuit``,
 /// or if any of the elements in the ``params`` array is not a valid, non-null pointer to a
 /// ``QkParam``.
-#[no_mangle]
+#[unsafe(no_mangle)]
 #[cfg(feature = "cbinding")]
 pub unsafe extern "C" fn qk_circuit_gate_param(
     circuit: *mut CircuitData,
