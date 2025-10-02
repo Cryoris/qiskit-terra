@@ -10,16 +10,15 @@
 // copyright notice, and modified files need to carry a notice indicating
 // that they have been altered from the originals.
 
-use hashbrown::HashMap;
 use num_complex::Complex64;
-use std::ffi::{c_char, CStr, CString};
+use std::ffi::{CStr, CString, c_char};
 use std::sync::Arc;
 
 use crate::exit_codes::ExitCode;
 use crate::pointers::{const_ptr_as_ref, mut_ptr_as_ref};
 
 use qiskit_circuit::operations::Param;
-use qiskit_circuit::parameter::parameter_expression::{ParameterError, ParameterExpression};
+use qiskit_circuit::parameter::parameter_expression::ParameterExpression;
 use qiskit_circuit::parameter::symbol_expr::{Symbol, SymbolExpr, Value};
 
 /// @ingroup QkParam
@@ -40,7 +39,7 @@ use qiskit_circuit::parameter::symbol_expr::{Symbol, SymbolExpr, Value};
 /// The `name` parameter must be a pointer to memory that contains a valid
 /// nul terminator at the end of the string. It also must be valid for reads of
 /// bytes up to and including the nul terminator.
-#[no_mangle]
+#[unsafe(no_mangle)]
 #[cfg(feature = "cbinding")]
 pub unsafe extern "C" fn qk_param_new_symbol(name: *const c_char) -> *mut Param {
     // SAFETY: Per documentation, the pointer is non-null and aligned.
@@ -73,7 +72,7 @@ pub unsafe extern "C" fn qk_param_new_symbol(name: *const c_char) -> *mut Param 
 /// qk_param_add(t, a, b);
 /// ```
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 #[cfg(feature = "cbinding")]
 pub extern "C" fn qk_param_zero() -> *mut Param {
     Box::into_raw(Box::new(Param::Float(0.)))
@@ -94,7 +93,7 @@ pub extern "C" fn qk_param_zero() -> *mut Param {
 /// # Safety
 ///
 /// Behavior is undefined if ``param`` is not either null or a valid pointer to a ``QkParam``.
-#[no_mangle]
+#[unsafe(no_mangle)]
 #[cfg(feature = "cbinding")]
 pub unsafe extern "C" fn qk_param_free(param: *mut Param) {
     if !param.is_null() {
@@ -123,7 +122,7 @@ pub unsafe extern "C" fn qk_param_free(param: *mut Param) {
 /// QkParam *r = qk_param_from_double(2.5);
 /// ```
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 #[cfg(feature = "cbinding")]
 pub extern "C" fn qk_param_from_double(value: f64) -> *mut Param {
     let value = Param::Float(value);
@@ -144,7 +143,7 @@ pub extern "C" fn qk_param_from_double(value: f64) -> *mut Param {
 /// QkParam *param = qk_param_from_complex(c);
 /// ```
 ///
-#[no_mangle]
+#[unsafe(no_mangle)]
 #[cfg(feature = "cbinding")]
 pub extern "C" fn qk_param_from_complex(value: Complex64) -> *mut Param {
     let value = SymbolExpr::Value(Value::Complex(value));
@@ -170,7 +169,7 @@ pub extern "C" fn qk_param_from_complex(value: Complex64) -> *mut Param {
 /// # Safety
 ///
 /// The behavior is undefined if ``param`` is not a valid pointer to a non-null ``QkParam``.
-#[no_mangle]
+#[unsafe(no_mangle)]
 #[cfg(feature = "cbinding")]
 pub unsafe extern "C" fn qk_param_copy(param: *const Param) -> *mut Param {
     // SAFETY: Per documentation, the pointer is non-null and aligned.
@@ -205,7 +204,7 @@ pub unsafe extern "C" fn qk_param_copy(param: *const Param) -> *mut Param {
 ///
 /// Do not change the length of the string after it's returned (by writing a nul byte somewhere
 /// inside the string or removing the final one), although values can be mutated.
-#[no_mangle]
+#[unsafe(no_mangle)]
 #[cfg(feature = "cbinding")]
 pub unsafe extern "C" fn qk_param_str(param: *const Param) -> *mut c_char {
     // SAFETY: Per documentation, the pointer is non-null and aligned.
@@ -241,7 +240,7 @@ pub unsafe extern "C" fn qk_param_str(param: *const Param) -> *mut c_char {
 ///
 /// The behavior is undefined if any of ``out``, ``lhs`` or ``rhs`` is not a valid, non-null
 /// pointer to a ``QkParam``.
-#[no_mangle]
+#[unsafe(no_mangle)]
 #[cfg(feature = "cbinding")]
 pub unsafe extern "C" fn qk_param_add(
     out: *mut Param,
@@ -298,7 +297,7 @@ pub unsafe extern "C" fn qk_param_add(
 ///
 /// The behavior is undefined if any of ``out``, ``lhs`` or ``rhs`` is not a valid, non-null
 /// pointer to a ``QkParam``.
-#[no_mangle]
+#[unsafe(no_mangle)]
 #[cfg(feature = "cbinding")]
 pub unsafe extern "C" fn qk_param_sub(
     out: *mut Param,
@@ -354,7 +353,7 @@ pub unsafe extern "C" fn qk_param_sub(
 ///
 /// The behavior is undefined if any of ``out``, ``lhs`` or ``rhs`` is not a valid, non-null
 /// pointer to a ``QkParam``.
-#[no_mangle]
+#[unsafe(no_mangle)]
 #[cfg(feature = "cbinding")]
 pub unsafe extern "C" fn qk_param_mul(
     out: *mut Param,
@@ -410,7 +409,7 @@ pub unsafe extern "C" fn qk_param_mul(
 ///
 /// The behavior is undefined if any of ``out``, ``num`` or ``den`` is not a valid, non-null
 /// pointer to a ``QkParam``.
-#[no_mangle]
+#[unsafe(no_mangle)]
 #[cfg(feature = "cbinding")]
 pub unsafe extern "C" fn qk_param_div(
     out: *mut Param,
@@ -466,7 +465,7 @@ pub unsafe extern "C" fn qk_param_div(
 ///
 /// The behavior is undefined if any of ``out``, ``base`` or ``pow`` is not a valid, non-null
 /// pointer to a ``QkParam``.
-#[no_mangle]
+#[unsafe(no_mangle)]
 #[cfg(feature = "cbinding")]
 pub unsafe extern "C" fn qk_param_pow(
     out: *mut Param,
@@ -522,7 +521,7 @@ pub unsafe extern "C" fn qk_param_pow(
 ///
 /// The behavior is undefined if any of ``out`` or ``src`` is not a valid, non-null
 /// pointer to a ``QkParam``.
-#[no_mangle]
+#[unsafe(no_mangle)]
 #[cfg(feature = "cbinding")]
 pub unsafe extern "C" fn qk_param_sin(out: *mut Param, src: *const Param) -> ExitCode {
     // SAFETY: Per documentation, the pointers are non-null and aligned.
@@ -562,7 +561,7 @@ pub unsafe extern "C" fn qk_param_sin(out: *mut Param, src: *const Param) -> Exi
 ///
 /// The behavior is undefined if any of ``out`` or ``src`` is not a valid, non-null
 /// pointer to a ``QkParam``.
-#[no_mangle]
+#[unsafe(no_mangle)]
 #[cfg(feature = "cbinding")]
 pub unsafe extern "C" fn qk_param_cos(out: *mut Param, src: *const Param) -> ExitCode {
     // SAFETY: Per documentation, the pointers are non-null and aligned.
@@ -602,7 +601,7 @@ pub unsafe extern "C" fn qk_param_cos(out: *mut Param, src: *const Param) -> Exi
 ///
 /// The behavior is undefined if any of ``out`` or ``src`` is not a valid, non-null
 /// pointer to a ``QkParam``.
-#[no_mangle]
+#[unsafe(no_mangle)]
 #[cfg(feature = "cbinding")]
 pub unsafe extern "C" fn qk_param_tan(out: *mut Param, src: *const Param) -> ExitCode {
     // SAFETY: Per documentation, the pointers are non-null and aligned.
@@ -642,7 +641,7 @@ pub unsafe extern "C" fn qk_param_tan(out: *mut Param, src: *const Param) -> Exi
 ///
 /// The behavior is undefined if any of ``out`` or ``src`` is not a valid, non-null
 /// pointer to a ``QkParam``.
-#[no_mangle]
+#[unsafe(no_mangle)]
 #[cfg(feature = "cbinding")]
 pub unsafe extern "C" fn qk_param_asin(out: *mut Param, src: *const Param) -> ExitCode {
     // SAFETY: Per documentation, the pointers are non-null and aligned.
@@ -682,7 +681,7 @@ pub unsafe extern "C" fn qk_param_asin(out: *mut Param, src: *const Param) -> Ex
 ///
 /// The behavior is undefined if any of ``out`` or ``src`` is not a valid, non-null
 /// pointer to a ``QkParam``.
-#[no_mangle]
+#[unsafe(no_mangle)]
 #[cfg(feature = "cbinding")]
 pub unsafe extern "C" fn qk_param_acos(out: *mut Param, src: *const Param) -> ExitCode {
     // SAFETY: Per documentation, the pointers are non-null and aligned.
@@ -722,7 +721,7 @@ pub unsafe extern "C" fn qk_param_acos(out: *mut Param, src: *const Param) -> Ex
 ///
 /// The behavior is undefined if any of ``out`` or ``src`` is not a valid, non-null
 /// pointer to a ``QkParam``.
-#[no_mangle]
+#[unsafe(no_mangle)]
 #[cfg(feature = "cbinding")]
 pub unsafe extern "C" fn qk_param_atan(out: *mut Param, src: *const Param) -> ExitCode {
     // SAFETY: Per documentation, the pointers are non-null and aligned.
@@ -762,7 +761,7 @@ pub unsafe extern "C" fn qk_param_atan(out: *mut Param, src: *const Param) -> Ex
 ///
 /// The behavior is undefined if any of ``out`` or ``src`` is not a valid, non-null
 /// pointer to a ``QkParam``.
-#[no_mangle]
+#[unsafe(no_mangle)]
 #[cfg(feature = "cbinding")]
 pub unsafe extern "C" fn qk_param_log(out: *mut Param, src: *const Param) -> ExitCode {
     // SAFETY: Per documentation, the pointers are non-null and aligned.
@@ -802,7 +801,7 @@ pub unsafe extern "C" fn qk_param_log(out: *mut Param, src: *const Param) -> Exi
 ///
 /// The behavior is undefined if any of ``out`` or ``src`` is not a valid, non-null
 /// pointer to a ``QkParam``.
-#[no_mangle]
+#[unsafe(no_mangle)]
 #[cfg(feature = "cbinding")]
 pub unsafe extern "C" fn qk_param_exp(out: *mut Param, src: *const Param) -> ExitCode {
     // SAFETY: Per documentation, the pointers are non-null and aligned.
@@ -842,7 +841,7 @@ pub unsafe extern "C" fn qk_param_exp(out: *mut Param, src: *const Param) -> Exi
 ///
 /// The behavior is undefined if any of ``out`` or ``src`` is not a valid, non-null
 /// pointer to a ``QkParam``.
-#[no_mangle]
+#[unsafe(no_mangle)]
 #[cfg(feature = "cbinding")]
 pub unsafe extern "C" fn qk_param_abs(out: *mut Param, src: *const Param) -> ExitCode {
     // SAFETY: Per documentation, the pointers are non-null and aligned.
@@ -882,7 +881,7 @@ pub unsafe extern "C" fn qk_param_abs(out: *mut Param, src: *const Param) -> Exi
 ///
 /// The behavior is undefined if any of ``out`` or ``src`` is not a valid, non-null
 /// pointer to a ``QkParam``.
-#[no_mangle]
+#[unsafe(no_mangle)]
 #[cfg(feature = "cbinding")]
 pub unsafe extern "C" fn qk_param_sign(out: *mut Param, src: *const Param) -> ExitCode {
     // SAFETY: Per documentation, the pointers are non-null and aligned.
@@ -922,7 +921,7 @@ pub unsafe extern "C" fn qk_param_sign(out: *mut Param, src: *const Param) -> Ex
 ///
 /// The behavior is undefined if any of ``out`` or ``src`` is not a valid, non-null
 /// pointer to a ``QkParam``.
-#[no_mangle]
+#[unsafe(no_mangle)]
 #[cfg(feature = "cbinding")]
 pub unsafe extern "C" fn qk_param_neg(out: *mut Param, src: *const Param) -> ExitCode {
     // SAFETY: Per documentation, the pointers are non-null and aligned.
@@ -962,7 +961,7 @@ pub unsafe extern "C" fn qk_param_neg(out: *mut Param, src: *const Param) -> Exi
 ///
 /// The behavior is undefined if any of ``out`` or ``src`` is not a valid, non-null
 /// pointer to a ``QkParam``.
-#[no_mangle]
+#[unsafe(no_mangle)]
 #[cfg(feature = "cbinding")]
 pub unsafe extern "C" fn qk_param_conjugate(out: *mut Param, src: *const Param) -> ExitCode {
     // SAFETY: Per documentation, the pointers are non-null and aligned.
@@ -1007,7 +1006,7 @@ pub unsafe extern "C" fn qk_param_conjugate(out: *mut Param, src: *const Param) 
 ///
 /// The behavior is undefined if any of ``lhs`` or ``rhs`` is not a valid, non-null
 /// pointer to a ``QkParam``.
-#[no_mangle]
+#[unsafe(no_mangle)]
 #[cfg(feature = "cbinding")]
 pub unsafe extern "C" fn qk_param_equal(lhs: *const Param, rhs: *const Param) -> bool {
     // SAFETY: Per documentation, the pointers are non-null and aligned.
@@ -1015,226 +1014,6 @@ pub unsafe extern "C" fn qk_param_equal(lhs: *const Param, rhs: *const Param) ->
     let rhs = unsafe { const_ptr_as_ref(rhs) };
 
     lhs.eq(rhs).unwrap()
-}
-
-/// @ingroup QkParam
-/// Bind real values to free parameters.
-///
-/// This function takes the the symbols to bind and the values as two arrays, where
-/// the ``i``th element in each describes a symbol-value pair to bind. The arrays must both be
-/// readable for ``num`` elements.
-///
-/// Importantly, the symbols in the ``keys`` array must reference the same instance of the
-/// ``QkParam`` used in the symbol; it is not sufficient to match the name.
-/// Symbols that are not present in the ``QkParam`` will be omitted.
-///
-/// @param out A pointer to the ``QkParam`` to store the result.
-/// @param src A pointer to the input ``QkParam`` on which to bind parameter values.
-/// @param keys An array of pointer to the ``QkParam`` to bind. Each of these must
-///   represent a plain, unbound symbol (i.e. the direct output of ``qk_param_new_symbol``).
-/// @param values An array of ``double`` values to be bound.
-/// @param num The number of symbol-value pairs, i.e. the length of the ``keys`` and ``values``
-///   arrays.
-///
-/// @return Upon success, ``QkExitCode_Success`` is returned. A ``QkExitCode_CInputError`` indicates
-///   that a ``QkParam`` in the ``keys`` array did not represent a plain symbol.
-///   A ``QkExitCode_ArithmeticError`` indicates an error during binding the values.
-///
-/// # Example
-///
-/// ```c
-/// // Create the expression a+b.
-/// QkParam *a = qk_param_new_symbol("a");
-/// QkParam *b = qk_param_new_symbol("b");
-/// QkParam *sum = qk_param_zero();
-/// qk_param_add(sum, a, b);
-///
-/// // bind the value of b to 1.5
-/// QkParam *bound = qk_param_zero();
-/// const QkParam *keys[1] = {b}; // the symbol to bind
-/// double values[1] = {1.5}; // the value to bind it to
-/// size_t num = 1; // the number of symbols we bind
-/// qk_param_bind(bound, sum, keys, values, num); // a + 1.5
-/// ```
-///
-/// # Safety
-///
-/// The behavior is undefined if any of the following is violated:
-///
-///   * ``out`` and ``src`` are valid, non-null pointers to ``QkParam`` objects
-///   * ``keys`` and ``values`` are readable arrays for ``num`` elements
-///   * each element of ``keys`` is a valid, non-null pointers to a ``QkParam``
-///
-#[no_mangle]
-#[cfg(feature = "cbinding")]
-pub unsafe extern "C" fn qk_param_bind(
-    out: *mut Param,
-    src: *const Param,
-    keys: *const *const Param,
-    values: *const f64,
-    num: usize,
-) -> ExitCode {
-    // SAFETY: Per documentation, the pointers are non-null and aligned.
-    let out = unsafe { mut_ptr_as_ref(out) };
-    let src = unsafe { const_ptr_as_ref(src) };
-
-    let Param::ParameterExpression(expr) = src else {
-        // If the input is not parameterized, return a copy.
-        *out = src.clone();
-        return ExitCode::Success;
-    };
-
-    // SAFETY: Per documentation, ``keys`` is readable for ``num`` elements, and each
-    // element is a valid, non-null pointer.
-    let keys = unsafe {
-        std::slice::from_raw_parts(keys, num)
-            .iter()
-            .map(|k| const_ptr_as_ref(*k))
-    };
-    let symbols = keys.map(|param: &Param| match param {
-        Param::ParameterExpression(expr) => expr.try_to_symbol_ref(),
-        _ => Err(ParameterError::NotASymbol),
-    });
-
-    // SAFETY: Per documentation, ``values`` is readable for ``num`` elements.
-    let values = unsafe { std::slice::from_raw_parts(values, num) };
-
-    // Here we zip the two lists and propagate the Result<&Symbol> to the tuple
-    // Result<(&Symbol, Value)> so only need to collect once to trigger possible errors.
-    let map: HashMap<&Symbol, Value> = match symbols
-        .zip(values)
-        .map(|(sym, val)| sym.map(|s| (s, Value::Real(*val))))
-        .collect::<Result<_, _>>()
-    {
-        Ok(map) => map,
-        Err(_) => return ExitCode::CInputError,
-    };
-
-    let bound = expr.bind(&map, true);
-    match bound {
-        Ok(bound) => {
-            *out = Param::ParameterExpression(Arc::new(bound));
-            ExitCode::Success
-        }
-        Err(_) => ExitCode::ArithmeticError,
-    }
-}
-
-/// @ingroup QkParam
-/// Substitute symbols in a ``QkParam`` with other ``QkParam`` objects.
-///
-/// This function takes the the symbols to substitute and their replacements as two arrays, where
-/// the ``i``th element in each describes a symbol-``QkParam`` pair to substitute. The arrays must
-/// both be readable for ``num`` elements.
-///
-/// Importantly, the symbols in the ``keys`` array must reference the same instance of the
-/// ``QkParam`` used in the symbol; it is not sufficient to match the name.
-/// Symbols that are not present in the ``QkParam`` will be omitted.
-///
-/// @param out A pointer to the ``QkParam`` to store the result.
-/// @param src A pointer to the input ``QkParam`` on which to substitute symbols.
-/// @param keys An array of pointer to the ``QkParam`` to bind. Each of these must
-///   represent a plain, unbound symbol (i.e. the direct output of ``qk_param_new_symbol``).
-/// @param values An array of ``QkParam`` to be used as replacements.
-/// @param num The number of symbol-value pairs, i.e. the length of the ``keys`` and ``values``
-///   arrays.
-///
-/// @return Upon success, ``QkExitCode_Success`` is returned. A ``QkExitCode_CInputError`` indicates
-///   that a ``QkParam`` in the ``keys`` array did not represent a plain symbol.
-///   A ``QkExitCode_ArithmeticError`` indicates an error during binding the values.
-///
-/// # Example
-///
-/// ```c
-/// // Create a+b.
-/// QkParam *a = qk_param_new_symbol("a");
-/// QkParam *b = qk_param_new_symbol("b");
-/// QkParam *sum = qk_param_zero();
-/// qk_param_add(sum, a, b);
-///
-/// // Create 2c as replacement for b.
-/// QkParam *c = qk_param_new_symbol("c");
-/// QkParam *two = qk_param_from_double(2.0);
-/// QkParam *repl = qk_param_zero();
-/// qk_param_mul(repl, c, two);
-///
-/// // Substitute b with 2c.
-/// QkParam *out = qk_param_zero();
-/// const QkParam *keys[1] = {b};
-/// const QkParam *subs[1] = {repl};
-/// size_t num = 1;
-/// qk_param_subs(out, sum, keys, subs, 1);
-/// ```
-///
-/// # Safety
-///
-/// The behavior is undefined if any of the following is violated:
-///
-///   * ``out`` and ``src`` are valid, non-null pointers to ``QkParam`` objects
-///   * ``keys`` and ``subs`` are readable arrays for ``num`` elements
-///   * each element of ``keys`` and ``subs`` is a valid, non-null pointers to a ``QkParam``
-///
-#[no_mangle]
-#[cfg(feature = "cbinding")]
-pub unsafe extern "C" fn qk_param_subs(
-    out: *mut Param,
-    src: *const Param,
-    keys: *const *const Param,
-    subs: *const *const Param,
-    num: usize,
-) -> ExitCode {
-    // SAFETY: Per documentation, the pointer are non-null and aligned.
-    let out = unsafe { mut_ptr_as_ref(out) };
-    let src = unsafe { const_ptr_as_ref(src) };
-
-    let Param::ParameterExpression(expr) = src else {
-        // If the input is not parameterized, return a copy.
-        *out = src.clone();
-        return ExitCode::Success;
-    };
-
-    // SAFETY: Per documentation, ``keys`` is readable for ``num`` elements, and each
-    // element is a valid, non-null pointer.
-    let keys = unsafe {
-        std::slice::from_raw_parts(keys, num)
-            .iter()
-            .map(|k| const_ptr_as_ref(*k))
-    };
-    let symbols = keys.map(|param: &Param| match param {
-        Param::ParameterExpression(expr) => expr.try_to_symbol(),
-        _ => Err(ParameterError::NotASymbol),
-    });
-
-    // SAFETY: Per documentation, ``subs`` is readable for ``num`` elements, and each
-    // element is a valid, non-null pointer.
-    let subs = unsafe {
-        std::slice::from_raw_parts(subs, num)
-            .iter()
-            .map(|k| const_ptr_as_ref(*k))
-    };
-    let replacements = subs.map(|param: &Param| match param {
-        Param::ParameterExpression(expr) => expr.as_ref().clone(),
-        Param::Float(f) => ParameterExpression::from_f64(*f),
-        Param::Obj(_) => panic!("Param::Obj is unsupported in the C API."),
-    });
-
-    let map = match symbols
-        .zip(replacements)
-        .map(|(sym, expr)| sym.map(|s| (s, expr)))
-        .collect::<Result<_, _>>()
-    {
-        Ok(map) => map,
-        Err(_) => return ExitCode::CInputError,
-    };
-
-    let bound = expr.subs(&map, true);
-    match bound {
-        Ok(bound) => {
-            *out = Param::ParameterExpression(Arc::new(bound));
-            ExitCode::Success
-        }
-        Err(_) => ExitCode::ArithmeticError,
-    }
 }
 
 /// @ingroup QkParam
@@ -1266,7 +1045,7 @@ pub unsafe extern "C" fn qk_param_subs(
 /// # Safety
 ///
 /// The behavior is undefined if ``param`` is not a valid, non-null pointer to a ``QkParam``.
-#[no_mangle]
+#[unsafe(no_mangle)]
 #[cfg(feature = "cbinding")]
 pub unsafe extern "C" fn qk_param_as_real(param: *const Param) -> f64 {
     // SAFETY: Per documentation, the pointer is non-null and aligned.
