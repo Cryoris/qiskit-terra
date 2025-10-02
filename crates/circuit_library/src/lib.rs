@@ -17,6 +17,7 @@ mod blocks;
 mod entanglement;
 mod iqp;
 mod multi_local;
+pub mod mycircuit;
 mod parameter_ledger;
 mod pauli_evolution;
 mod pauli_feature_map;
