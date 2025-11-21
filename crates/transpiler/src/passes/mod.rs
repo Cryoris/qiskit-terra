@@ -32,6 +32,7 @@ mod commutation_cancellation;
 mod commutative_optimization;
 mod consolidate_blocks;
 mod dense_layout;
+mod discretize_rotations;
 mod disjoint_layout;
 mod elide_permutations;
 mod filter_op_nodes;
@@ -65,6 +66,7 @@ pub use commutation_cancellation::{cancel_commutations, commutation_cancellation
 pub use commutative_optimization::{commutative_optimization_mod, run_commutative_optimization};
 pub use consolidate_blocks::{DecomposerType, consolidate_blocks_mod, run_consolidate_blocks};
 pub use dense_layout::{best_subset, dense_layout_mod};
+pub use discretize_rotations::{discretize_rotations_mod, run_discretize_rotations};
 pub use disjoint_layout::{combine_barriers, disjoint_utils_mod, distribute_components};
 pub use elide_permutations::{elide_permutations_mod, run_elide_permutations};
 pub use filter_op_nodes::{filter_labeled_op, filter_op_nodes_mod};
