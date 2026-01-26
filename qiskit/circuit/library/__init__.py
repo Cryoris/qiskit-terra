@@ -992,3 +992,4 @@ from .phase_oracle import PhaseOracle, PhaseOracleGate
 from .bit_flip_oracle import BitFlipOracleGate
 from .overlap import UnitaryOverlap, unitary_overlap
 from .standard_gates import get_standard_gate_name_mapping
+from .block_encoding import BlockEncoding
