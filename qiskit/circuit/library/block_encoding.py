@@ -8,7 +8,9 @@ class BlockEncoding(Gate):
     """A block encoding."""
 
     def __init__(self, operator: SparseObservable):
-        super().__init__("block_encoding", operator.num_qubits, params=[operator])
+        num_encoding = int(np.ceil(np.log2(len(operator.coeffs))))
+        super().__init__("block_encoding", operator.num_qubits + num_encoding, params=[])
+        self._operator = operator
 
     def validate_parameter(self, parameter):
         if isinstance(parameter, SparseObservable):
@@ -18,7 +20,7 @@ class BlockEncoding(Gate):
     def _define(self):
         if self._definition is None:
             # we implement Prep^dagger Select Prep for the Hamiltonian
-            op = self.params[0]
+            op = self._operator
 
             # get the padded state preparation implementing |0> -> \sum_i c_i |i>
             prep = state_prep(op.coeffs)
@@ -62,7 +64,7 @@ def select(observable, num_controls) -> QuantumCircuit:
 
     for i, term in enumerate(observable):
         pauli_gate = pauli_gate_from_term(term)
-        control_state = bin(i)[2:]
+        control_state = bin(i)[2:].zfill(num_controls)
         controlled = pauli_gate.control(len(controls), ctrl_state=control_state)
         oracle.append(controlled, controls[:] + state[:])
 
