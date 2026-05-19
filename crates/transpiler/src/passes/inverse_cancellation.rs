@@ -156,22 +156,72 @@ fn run_on_inverse_pairs(
     Ok(())
 }
 
-static SELF_INVERSE_GATES_FOR_CANCELLATION: [StandardGate; 15] = [
-    StandardGate::CX,
-    StandardGate::ECR,
-    StandardGate::CY,
-    StandardGate::CZ,
-    StandardGate::X,
-    StandardGate::Y,
-    StandardGate::Z,
-    StandardGate::H,
-    StandardGate::Swap,
-    StandardGate::CH,
-    StandardGate::CCX,
-    StandardGate::CCZ,
-    StandardGate::RCCX,
-    StandardGate::CSwap,
-    StandardGate::C3X,
+struct SelfInverse {
+    gate: StandardGate,
+    symmetric: bool,
+}
+
+static SELF_INVERSE_GATES_FOR_CANCELLATION: [SelfInverse; 15] = [
+    SelfInverse {
+        gate: StandardGate::CX,
+        symmetric: false,
+    },
+    SelfInverse {
+        gate: StandardGate::ECR,
+        symmetric: false,
+    },
+    SelfInverse {
+        gate: StandardGate::CY,
+        symmetric: false,
+    },
+    SelfInverse {
+        gate: StandardGate::CZ,
+        symmetric: true,
+    },
+    SelfInverse {
+        gate: StandardGate::X,
+        symmetric: false,
+    },
+    SelfInverse {
+        gate: StandardGate::Y,
+        symmetric: false,
+    },
+    SelfInverse {
+        gate: StandardGate::Z,
+        symmetric: false,
+    },
+    SelfInverse {
+        gate: StandardGate::H,
+        symmetric: false,
+    },
+    SelfInverse {
+        gate: StandardGate::Swap,
+        symmetric: true,
+    },
+    SelfInverse {
+        gate: StandardGate::CH,
+        symmetric: false,
+    },
+    SelfInverse {
+        gate: StandardGate::CCX,
+        symmetric: false,
+    },
+    SelfInverse {
+        gate: StandardGate::CCZ,
+        symmetric: true,
+    },
+    SelfInverse {
+        gate: StandardGate::RCCX,
+        symmetric: false,
+    },
+    SelfInverse {
+        gate: StandardGate::CSwap,
+        symmetric: false,
+    },
+    SelfInverse {
+        gate: StandardGate::C3X,
+        symmetric: false,
+    },
 ];
 
 // Inverse cancellation pairs. We store pairs, plus additional info
@@ -204,18 +254,18 @@ static INVERSE_PAIRS_FOR_CANCELLATION: [InversePair; 4] = [
 fn std_self_inverse(dag: &mut DAGCircuit) {
     if !SELF_INVERSE_GATES_FOR_CANCELLATION
         .iter()
-        .any(|gate| dag.get_op_counts().contains_key(gate.name()))
+        .any(|self_inv| dag.get_op_counts().contains_key(self_inv.gate.name()))
     {
         return;
     }
     // Handle self inverse gates
-    for self_inv_gate in SELF_INVERSE_GATES_FOR_CANCELLATION {
-        if *dag.get_op_counts().get(self_inv_gate.name()).unwrap_or(&0) <= 1 {
+    for self_inv in SELF_INVERSE_GATES_FOR_CANCELLATION.iter() {
+        if *dag.get_op_counts().get(self_inv.gate.name()).unwrap_or(&0) <= 1 {
             continue;
         }
         let filter = |inst: &PackedInstruction| -> bool {
             match inst.op.view() {
-                OperationRef::StandardGate(gate) => gate == self_inv_gate,
+                OperationRef::StandardGate(gate) => gate == self_inv.gate,
                 _ => false,
             }
         };
@@ -236,8 +286,16 @@ fn std_self_inverse(dag: &mut DAGCircuit) {
                     let NodeType::Operation(next_inst) = &dag[gate_cancel_run[i + 1]] else {
                         unreachable!("Not an op node");
                     };
-                    let next_qargs = next_inst.qubits;
-                    if inst.qubits != next_qargs {
+
+                    // For symmetric gates, check if the qubits match irrespective of the order
+                    let qubits_match = if self_inv.symmetric {
+                        let inst_qubits = dag.get_qargs(inst.qubits);
+                        let next_inst_qubits = dag.get_qargs(next_inst.qubits);
+                        inst_qubits.iter().all(|q| next_inst_qubits.contains(q))
+                    } else {
+                        inst.qubits == next_inst.qubits
+                    };
+                    if !qubits_match {
                         partitions.push(std::mem::take(&mut chunk));
                     }
                 }

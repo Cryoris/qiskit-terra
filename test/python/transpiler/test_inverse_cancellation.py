@@ -37,6 +37,8 @@ from qiskit.circuit.library import (
     RZGate,
     CSGate,
     CSdgGate,
+    SwapGate,
+    CCZGate,
 )
 from test import QiskitTestCase
 
@@ -546,6 +548,53 @@ class TestInverseCancellation(QiskitTestCase):
             self.assertIn("h", gates_after)
             self.assertNotIn("p", gates_after)
 
+    def test_symmetric_self_inverse(self):
+        """Test cancellation of symmetric, self-inverse gates.
+
+        These gates should cancel if they are on the same set of qubits, irrespective of the order.
+        """
+        # We're testing the gates in every possible combination and qubit order.
+        # All should cancel.
+        for gate in [CZGate(), CCZGate(), SwapGate()]:
+            qubits = list(range(gate.num_qubits))
+            for qargs in itertools.product(
+                itertools.permutations(qubits, gate.num_qubits), repeat=2
+            ):
+                qc = QuantumCircuit(gate.num_qubits)
+                qc.append(gate, qargs[0])
+                qc.append(gate, qargs[1])
+
+                with self.subTest(gate=gate, qargs=qargs):
+                    tqc = InverseCancellation()(qc)
+                    self.assertEqual(tqc.count_ops(), {})
+
+    def test_symmetric_pairs(self):
+        """Test cancellation of symmetric gates.
+
+        These gates should cancel if they are on the same set of qubits, irrespective of the order.
+        """
+        # We're testing CS and CSdg in every possible combination and qubit order.
+        # All should cancel.
+        for qargs in itertools.product([(0, 1), (1, 0)], repeat=2):
+            for gates in itertools.permutations([CSGate(), CSdgGate()]):
+                qc = QuantumCircuit(2)
+                qc.append(gates[0], qargs[0])
+                qc.append(gates[1], qargs[1])
+
+                with self.subTest(gates=gates, qargs=qargs):
+                    tqc = InverseCancellation()(qc)
+                    self.assertEqual(tqc.count_ops(), {})
+
+        # sanity check: verify that CS-CSdg doesn't globally get cancelled
+        with self.subTest(msg="sanity check"):
+            qc = QuantumCircuit(3)
+            qc.cs(0, 1)
+            qc.csdg(2, 1)
+
+            tqc = InverseCancellation()(qc)
+            self.assertEqual(tqc.count_ops().get("cs", 0), 1)
+            self.assertEqual(tqc.count_ops().get("csdg", 0), 1)
+
 
 @ddt.ddt
 class TestCXCancellation(QiskitTestCase):
@@ -742,33 +791,6 @@ class TestCXCancellation(QiskitTestCase):
         expected.if_else((clbit, True), expected_if_body, None, [0, 1, 2, 3], [0])
 
         self.assertEqual(pass_(test), expected)
-
-    def test_symmetries(self):
-        """Test cancellation of symmetric gates.
-
-        CS/CSdg should cancel if they are on the same set of qubits, irrespective of the order.
-        """
-        # We're testing CS and CSdg in every possible combination and qubit order.
-        # All should cancel.
-        for qargs in itertools.product([(0, 1), (1, 0)], repeat=2):
-            for gates in itertools.permutations([CSGate(), CSdgGate()]):
-                qc = QuantumCircuit(2)
-                qc.append(gates[0], qargs[0])
-                qc.append(gates[1], qargs[1])
-
-                with self.subTest(gates=gates, qargs=qargs):
-                    tqc = InverseCancellation()(qc)
-                    self.assertEqual(tqc.count_ops(), {})
-
-        # sanity check: verify that CS-CSdg doesn't globally get cancelled
-        with self.subTest(msg="sanity check"):
-            qc = QuantumCircuit(3)
-            qc.cs(0, 1)
-            qc.csdg(2, 1)
-
-            tqc = InverseCancellation()(qc)
-            self.assertEqual(tqc.count_ops().get("cs", 0), 1)
-            self.assertEqual(tqc.count_ops().get("csdg", 0), 1)
 
 
 if __name__ == "__main__":
