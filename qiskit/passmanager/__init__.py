@@ -20,7 +20,9 @@ Passmanager (:mod:`qiskit.passmanager`)
 Overview
 ========
 
-The Qiskit pass manager is somewhat inspired by the `LLVM compiler <https://llvm.org/>`_.
+The Qiskit pass manager is inspired by the `LLVM compiler <https://llvm.org/>`_.
+The compiler infrastructure separates responsibilities into three main components;
+tasks, flow controllers, and pass managers.
 
 A compilation pipeline executes a sequence of :class:`~.passmanager.Task`\ s, each of which
 takes an intermediate representation (IR) as input, performs work, and returns an output IR.
@@ -28,59 +30,30 @@ An atomic task is a *pass*, which subclasses :class:`.GenericPass` and implement
 :meth:`~.GenericPass.run` method.  This is the class that should be used as base class when
 implementing a custom compiler pass.
 
-Flow controllers provide execution models for a set of tasks.  They can, for example,
-simply execute tasks in a sequence, or implement non-linear execution flows, such as a
-for-loop, while-loop, or conditional execution.
+Flow controllers provide execution models for a set of tasks.
+The simplest flow controller is a :class:`FlowControllerLinear`, which simply executes
+a set of tasks in a linear sequence.
+More advanced flow controllers include loops or conditional execution.
+These are, for example, used in Qiskit's preset transpiler pipelines for higher optimization
+levels where optimizations are run until a convergence criterion is met.
 
-Pass
+Pass managers are responsible for managing the tasks, including scheduling required analyses and
+enabling modification of the task sequence by the user.
+They also provide infrastructure to pass a :class:`PropertySet` with context-information through
+every task and a callback function for introspection.
+The callback is called by :class:`GenericPass` instances expecting the following signature:
 
+.. code-block:: python
 
-Overview
-Task
-FlowControllers
-PassManagers
-PropertySet
-Callback
+    def callback(
+        task: Task[IR_IN, IR_OUT],
+        passmanager_ir: IR_OUT,
+        property_set: PropertySet,
+        running_time: float,
+        count: int
+    ) -> None:
+        ...
 
-Compilation is implemented as a sequence of tasks
-Takes an IR as input, performs work, return an output IR
-The base class in GenericPass, which provides convenient logic provided through the callback system
-This is the class that should be derived from when implementing a custom pass.
-
-Information can be passed through by a PropertySet
-
-The responsibility of the pass manager is to schedule the tasks, pass context information
-via the property set, pass a callback
-
-Qiskit provides two IR-generic pass managers
-
-1. BasePassManager -- fixed IR. Provides additional input and output conversions for convenience.
-For example, the ``qiskit.transpiler`` module implements compiler passes on the DAGCircuit,
-but provides implicit conversions from and to QuantumCircuit.
-
-2. MultiStagePassManager -- a staged pass manager where each stage can preserve or lower the IR.
-
-Both of them rely on the :class:`FlowControllerLinear` to serialize the tasks and execute them.
-Broadcasting & parallel map
-
-
-
-The Qiskit pass manager is somewhat inspired by the `LLVM compiler <https://llvm.org/>`_,
-but it is designed to take a Python object as an input instead of plain source code.
-
-The pass manager converts the input Python object into an intermediate representation (IR),
-and it can be optimized and get lowered with a variety of transformations over multiple passes.
-The pass manager framework may employ multiple IRs with interleaved conversion passes,
-depending on the context of the compilation. Finally, the IR is converted back to some Python object.
-Note that the input type and output type are not necessarily the same.
-
-Compilation in the pass manager is a chain of :class:`~.passmanager.Task` executions that
-take an IR and output a new IR with some optimization or data analysis.
-An atomic task is a *pass* which is a subclass of :class:`.GenericPass` that implements
-a :meth:`.~GenericPass.run` method that performs some work on the received IR.
-A set of passes may form a *flow controller*, which is a subclass of
-:class:`.BaseController`, which can implement arbitrary compilation-state-dependent logic for
-deciding which pass will get run next.
 Passes share intermediate data via the :class:`.PropertySet` object which is
 a free-form dictionary. A pass can populate the property set dictionary during the task execution.
 A flow controller can also consume the property set to control the pass execution,
@@ -92,30 +65,24 @@ The status is updated after every pass is run, and contains information about th
 (number of passes run, failure state, and so on) as opposed to the :class:`PropertySet`, which
 contains information about the IR being optimized.
 
-A :class:`BasePassManager` is a wrapper of the flow controller, with responsibilities of
+Qiskit provides two IR-generic pass managers in this module, and pass manager specialized
+to :class:`.DAGCircuit` as IR in :mod:`qiskit.transpiler`. The IR-generic ones are:
 
-* Scheduling tasks,
-* Converting an input Python object to an internal IR,
-* Initializing a property set and workflow status,
-* Running scheduled tasks to apply a series of transformations to the IR,
-* Converting the IR back to an output Python object.
+* :class:`BasePassManager`: a pass manager with fixed IR. This pass manager allows modifying the
+  set of tasks to be run and supports parallel execution of multiple inputs by means
+  of :func:`.parallel_map`. This class has support for additional conversion of an input program
+  representation to the internal IR, and a conversion to an output program format.
 
-This indicates that the flow controller itself is type-agnostic, and a developer must
-implement a subclass of the :class:`BasePassManager` to manage the data conversion steps.
-This *veil of ignorance* allows us to choose the most efficient data representation
-for a particular pass manager task, while we can reuse the flow control machinery
-for different input and output types.
+  The :class:`BasePassManager` is the base class for Qiskit's preset pass managers
+  for :class:`.DAGCircuit` transpilation, such as returned by :func:`.generate_preset_pass_manager`.
+  There, implicit conversions to and from :class:`.QuantumCircuit` as input and output program
+  format are used.
 
-A single flow controller always takes a single IR object, and returns a single
-IR object. Parallelism for multiple input objects is supported by the
-:class:`BasePassManager` by broadcasting the flow controller via
-the :func:`.parallel_map` function.
-
-The :class:`MultiStagePassManager` allows constructing staged compiler workflows with
-multiple IRs. A stage is defined by a :class:`~.passmanager.Task` or an iterable thereof, which can
-also be grouped inside a :class:`BasePassManager`.
-The stages must be set up such that the output IR of the current stage matches the input IR
-of the next stage, there are (currently) no automatic translations.
+* :class:`MultiStagePassManager`: a staged pass manager where each stage can preserve or lower the IR.
+  A stage is defined by a :class:`~.passmanager.Task` or an iterable thereof, which can
+  also be grouped inside a :class:`BasePassManager`.
+  The stages must be set up such that the output IR of the current stage matches the input IR
+  of the next stage, there are (currently) no automatic translations.
 
 
 Examples
@@ -297,7 +264,6 @@ Exceptions
 """
 
 from .passmanager import BasePassManager
-
 from .multistage_passmanager import MultiStagePassManager
 from .flow_controllers import (
     FlowControllerLinear,

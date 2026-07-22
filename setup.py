@@ -4,7 +4,7 @@
 #
 # This code is licensed under the Apache License, Version 2.0. You may
 # obtain a copy of this license in the LICENSE.txt file in the root directory
-# of this source tree or at http://www.apache.org/licenses/LICENSE-2.0.
+# of this source tree or at https://www.apache.org/licenses/LICENSE-2.0.
 #
 # Any modifications or derivative works of this code must retain this
 # copyright notice, and modified files need to carry a notice indicating
@@ -55,6 +55,9 @@ if os.getenv("QISKIT_NO_CACHE_GATES") == "1":
 else:
     features = ["cache_pygates"]
 
+if os.getenv("QISKIT_BUILD_WITH_MIMALLOC") == "1":
+    features.append("mimalloc")
+
 
 setup(
     rust_extensions=[
@@ -64,6 +67,7 @@ setup(
             binding=Binding.PyO3,
             debug=rust_debug,
             features=features,
+            generated_files={"include": "qiskit.capi", "_ctypes.py": "qiskit.capi"},
         )
     ],
     options={"bdist_wheel": {"py_limited_api": "cp310"}},
