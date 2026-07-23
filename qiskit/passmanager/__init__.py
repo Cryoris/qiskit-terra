@@ -24,7 +24,7 @@ The Qiskit pass manager is inspired by the `LLVM compiler <https://llvm.org/>`_.
 The compiler infrastructure separates responsibilities into three main components;
 tasks, flow controllers, and pass managers.
 
-A compilation pipeline executes a sequence of :class:`Task`\ s, each of which
+A compilation pipeline executes a sequence of :class:`Task` objects, each of which
 takes an intermediate representation (IR) as input, performs work, and returns an output IR.
 Where :class:`Task` defines the interface, an atomic task is a *pass*, which subclasses
 :class:`GenericPass` and implements its abstract :meth:`~GenericPass.run` method.
