@@ -24,11 +24,11 @@ The Qiskit pass manager is inspired by the `LLVM compiler <https://llvm.org/>`_.
 The compiler infrastructure separates responsibilities into three main components;
 tasks, flow controllers, and pass managers.
 
-A compilation pipeline executes a sequence of :class:`~.passmanager.Task`\ s, each of which
+A compilation pipeline executes a sequence of :class:`Task`\ s, each of which
 takes an intermediate representation (IR) as input, performs work, and returns an output IR.
-An atomic task is a *pass*, which subclasses :class:`.GenericPass` and implements its abstract
-:meth:`~.GenericPass.run` method.  This is the class that should be used as base class when
-implementing a custom compiler pass.
+Where :class:`Task` defines the interface, an atomic task is a *pass*, which subclasses
+:class:`GenericPass` and implements its abstract :meth:`~GenericPass.run` method.
+This is the class that should be used as base class when implementing a custom compiler pass.
 
 Flow controllers provide execution models for a set of tasks.
 The simplest flow controller is a :class:`FlowControllerLinear`, which simply executes
@@ -39,32 +39,6 @@ levels where optimizations are run until a convergence criterion is met.
 
 Pass managers are responsible for managing the tasks, including scheduling required analyses and
 enabling modification of the task sequence by the user.
-They also provide infrastructure to pass a :class:`PropertySet` with context-information through
-every task and a callback function for introspection.
-The callback is called by :class:`GenericPass` instances expecting the following signature:
-
-.. code-block:: python
-
-    def callback(
-        task: Task[IR_IN, IR_OUT],
-        passmanager_ir: IR_OUT,
-        property_set: PropertySet,
-        running_time: float,
-        count: int
-    ) -> None:
-        ...
-
-Passes share intermediate data via the :class:`.PropertySet` object which is
-a free-form dictionary. A pass can populate the property set dictionary during the task execution.
-A flow controller can also consume the property set to control the pass execution,
-but this access must be read-only.
-The property set is portable and handed over from pass to pass at execution.
-In addition to the property set, tasks also receive a :class:`.WorkflowStatus` data structure.
-This object is initialized when the pass manager is run and handed over to underlying tasks.
-The status is updated after every pass is run, and contains information about the pipeline state
-(number of passes run, failure state, and so on) as opposed to the :class:`PropertySet`, which
-contains information about the IR being optimized.
-
 Qiskit provides two IR-generic pass managers in this module, and pass manager specialized
 to :class:`.DAGCircuit` as IR in :mod:`qiskit.transpiler`. The IR-generic ones are:
 
@@ -83,6 +57,33 @@ to :class:`.DAGCircuit` as IR in :mod:`qiskit.transpiler`. The IR-generic ones a
   also be grouped inside a :class:`BasePassManager`.
   The stages must be set up such that the output IR of the current stage matches the input IR
   of the next stage, there are (currently) no automatic translations.
+
+Pass managers also provide infrastructure to pass a :class:`PropertySet` with context-information
+through every task and a callback function for introspection.
+The :class:`PropertySet` is a free-form dictionary, which can be populated and read by a pass during
+execution, or read by a flow-controller to control pass execution.
+The property set is portable and handed over from pass to pass at execution.
+In addition to the property set, tasks also receive a :class:`WorkflowStatus` data structure.
+This object is initialized when the pass manager is run and handed over to underlying tasks.
+The status is updated after every pass is run, and contains information about the pipeline state
+(number of passes run, failure state, and so on) as opposed to the :class:`PropertySet`, which
+contains information about the IR being optimized.
+
+The callback is called by :class:`GenericPass` instances expecting the following signature:
+
+.. code-block:: python
+
+    def callback(
+        task: Task[IR_IN, IR_OUT],
+        passmanager_ir: IR_OUT,
+        property_set: PropertySet,
+        running_time: float,
+        count: int
+    ) -> None:
+        ...
+
+Note that this signature differs slightly for passes and pass managers defined in the
+:mod:`qiskit.transpiler` module.
 
 
 Examples
@@ -218,16 +219,14 @@ See details in the following class API documentation.
 Interface
 =========
 
-Base classes
-------------
+Passes
+------
 
 .. autosummary::
    :toctree: ../stubs/
 
-   BasePassManager
-   BaseController
    GenericPass
-
+   Task
 
 Pass managers
 -------------
@@ -235,6 +234,7 @@ Pass managers
 .. autosummary::
    :toctree: ../stubs/
 
+   BasePassManager
    MultiStagePassManager
 
 Flow controllers
@@ -243,6 +243,7 @@ Flow controllers
 .. autosummary::
    :toctree: ../stubs/
 
+   BaseController
    FlowControllerLinear
    ConditionalController
    DoWhileController
@@ -270,7 +271,7 @@ from .flow_controllers import (
     ConditionalController,
     DoWhileController,
 )
-from .base_tasks import GenericPass, BaseController
+from .base_tasks import GenericPass, BaseController, Task
 from .compilation_status import PropertySet, WorkflowStatus, PassManagerState
 from .exceptions import PassManagerError
 
@@ -285,5 +286,6 @@ __all__ = [
     "PassManagerError",
     "PassManagerState",
     "PropertySet",
+    "Task",
     "WorkflowStatus",
 ]
